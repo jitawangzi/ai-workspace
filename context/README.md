@@ -21,6 +21,12 @@
 | 测试与模拟客户端 | [client-test.md](client-test.md) |
 | 高风险逻辑检查；已要求 logic-auditor 时 | [logic-audit-game-server.md](logic-audit-game-server.md) |
 | 活动、任务、事件、条件、奖励、红点 | [business-patterns/README.md](business-patterns/README.md) |
+
+### 流程专属索引
+
+| 场景 | 文档 |
+|---|---|
 | 流程产物与旧规格接入 | [ai-automation-workflow.md](ai-automation-workflow.md) |
+| 迁移审查问题、纠正与验证边界 | [审查补充记录](../workflows/migration-audit-20261022.md) |
 
 旧 context 全部保留其知识去向，原件仍在 `.claude_old/context/`。迁移映射与未核实事项见 [迁移记录](../workflows/migration-20261021.md)。API 快照与旧示例必须结合当前源码使用；冲突先查证，不能为迎合旧文字改坏现行实现。中文注释、异常日志等新增规范以 coding-style 为准。

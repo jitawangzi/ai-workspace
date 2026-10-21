@@ -22,7 +22,10 @@ function Assert-Contract([bool]$Condition, [string]$Message) {
 
 if ($Mode -eq 'Syntax') {
     # 解析而不执行新增脚本，避免检查过程启动服务或改业务数据。
-    foreach ($file in Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.ps1' -File -Recurse) {
+    $scriptFiles=@(Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.ps1' -File -Recurse) +
+        @(Get-Item -LiteralPath (Join-Path $hostRoot 'run_client.ps1')) +
+        @(Get-ChildItem -LiteralPath (Join-Path $aiRoot 'specs/scripts') -Filter '*.ps1' -File)
+    foreach ($file in $scriptFiles) {
         $parseTokens = $null
         $parseErrors = $null
         [Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$parseTokens, [ref]$parseErrors) | Out-Null
@@ -71,6 +74,16 @@ if ($Mode -eq 'Syntax') {
     Assert-Contract ($contextText -notmatch 'D:\\work-all\\work_2025|\]\(human-sop\.md\)|\]\(protocol\.md\)') 'Obsolete paths survived migration'
     $profiles = Get-Content -LiteralPath (Join-Path $aiRoot 'context/verification-commands.json') -Raw | ConvertFrom-Json
     Assert-Contract (($profiles.commands.compile.arguments -join ' ') -match 'mvn.*compile') 'Java compile profile must invoke Maven'
+    Assert-Contract (($profiles.commands.'java-unit-smoke'.arguments -join ' ') -match 'run-java-tests.ps1.*core.*TagManagerTest') 'Java smoke profile must execute actual selected JUnit tests'
+    foreach ($name in @('project-summary.md','coding-style.md','business-logic-pattern.md','project-tooling.md')) {
+        Assert-Contract ((Get-Content -LiteralPath (Join-Path $aiRoot "context/$name") -First 1) -match '^<!-- context-meta .*reviewedAt:.*expiresAt:') "Missing freshness metadata: $name"
+    }
+    foreach ($repo in @($aiRoot,(Join-Path $aiRoot 'specs'))) {
+        foreach ($relative in @('commit.cmd','pull.cmd','scripts/sync-repository.ps1')) {
+            Assert-Contract (Test-Path -LiteralPath (Join-Path $repo $relative) -PathType Leaf) "Missing sync entry: $repo/$relative"
+        }
+    }
+    Assert-Contract ([IO.File]::ReadAllText((Join-Path $hostRoot 'export_api.bat')).Contains('.ai-workspace\context\api-whitelist.md')) 'API export still targets inactive context'
     & pwsh -NoProfile -File (Join-Path $hostRoot 'tools/ai-sop/install-ai-sop.ps1') -Mode Git -Action Verify -WorkspaceRoot $hostRoot -OutputFormat Json
     Assert-Contract ($LASTEXITCODE -eq 0) 'Installed SOP projections or version lock are inconsistent'
 }

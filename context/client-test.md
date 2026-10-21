@@ -78,10 +78,14 @@ public class ClientMailTest extends ClientBaseScenarioTest {
 ### 2.3 常用 API
 在 `executeProcess` 方法中，你可以使用以下父类提供的方法：
 
+场景类统一放在 `simulationclient/src/main/java/cn/game/simulation/test/ai/`，包名 `cn.game.simulation.test.ai`，继承同包 `ClientBaseScenarioTest`。这些是带 main 入口的模拟客户端场景，不属于 Surefire 自动发现的 `src/test/java` 用例。
+
 *   **同步发送消息**：
     `sendAndWait(Message request)` —— 发送消息并阻塞等待服务器返回,需要根据协议规则推断返回类型
 *   **同步玩家数据**：
     `synchronizeDataFromServer()` —— 请求服务器刷新当前玩家的最新核心数据 (`playerAllInfo`)。
+*   **GM 准备状态**：
+    `sendGmCmd(String cmd)` —— 基类封装 `TestGmCmdRequest_6f000001` 并调用 `sendAndWait`；例如 `sendGmCmd("item 100001 1000")`。检查响应错误码与准备后的状态，不能只确认消息发出。
 
 ---
 
@@ -147,6 +151,8 @@ pwsh -NoProfile -File ./run_client.ps1 -TestClass <完整类名>
 
 ### 5.2 使用示例
 
+继承基类时优先 `sendGmCmd("item " + Asset.playerExp.ID + " 10000")` 准备经验，`Asset` 为 `cn.game.protocol.generated.enume.Asset`。当前 `playerExp.ID=100201`；旧 Skill 的 `100002` 现为金币，不能照抄。资源增加经 `CurrencyModule` / `PlayerHelper` 的等级处理链产生升级，仍应断言最终等级及开放状态。下例保留手动协议写法供理解底层行为。
+
 ```java
 // 发送 GM 指令：增加 1000 个 100001 号道具
 TestGmCmdRequest_6f000001 gmReq = TestGmCmdRequest_6f000001.newBuilder()
@@ -196,6 +202,10 @@ sendAndWait(newDayReq);
 - **边界值**: 必须测试字符串为空、最大长度、特殊字符。
 - **重复请求**: 测试连续发送两次相同请求（幂等性）。
 
+### 自定义 GM 的边界
+
+现有 GM 无法精确构造状态时，可在当前任务范围内扩展 `cn.game.games.net.game.gm.AbstractGm`，通过 `GmRegistry` / `GmCommand` 的实际注册链接入；参考同目录 `command/`。仅用于 Arrange / Observe / Cleanup，不代替被测正式入口，不绕过资格或直接执行目标奖励逻辑。检查环境/权限、影响账号、可重复执行与清理方式；新增服务端代码按正常编译和部署流程生效，不为测试方便修改公共持久化模型。
+
 ## 7. 从实践迁移的测试闭环
 
 - 先复用现有测试计划、模拟客户端场景与通用 GM 原语。GM 仅用于准备、观察、清理；目标行为由正式 Protobuf 请求或正式业务入口触发。
@@ -207,3 +217,24 @@ sendAndWait(newDayReq);
 - 涉及外部埋点时检查字段名、触发时机、失败/回滚不发及重试不重复。
 - 修改 Java 后按本项目实际进程部署并重启受影响实例；复制 class 到运行目录不证明已加载。只操作已确认的工作区、实例、PID，不按 java 进程名全局清理。
 - 纯逻辑测试、模拟客户端联调、持久化冷重载覆盖不同层次；交付列明实际执行范围。T1/T2 不自动增加独立审核或完整环境启动要求。
+
+## 8. 验证路径分级
+
+| 路径 | 适用范围 | 必须观察 | 不能证明 |
+|---|---|---|---|
+| Path A：进程内 / 模块级 JUnit | 纯计算、条件判定、状态转换、可隔离的模块行为 | 输入边界、失败分支、真实业务入口的断言与测试计数 | 网络协议、实际数据库、运行中服务已加载新代码 |
+| Path B：模拟客户端协议测试 | Handler、鉴权、协议顺序、模块与资源通知联动 | 正式 Protobuf 请求、错误码、回包/推送、状态与副作用 | 仅刷新协议缓存不能证明冷重载持久化 |
+| 保存闭环补充 | 重置、扣费、领奖、迁移等依赖保存的修改 | 保存完成后从持久化介质重建新对象，验证字段和幂等性 | 读取同一 Player/Module 内存对象不能作为落库证据 |
+| 环境受限降级 | 完整环境未就绪时先做 Path A | 明确已执行的断言、未覆盖入口及限制 | 不将 A 改称 B；按需求目标补必要验证或记录真实待办 |
+
+## 9. Bug 修复测试复用清单
+
+| 检查 | 做法与通过依据 |
+|---|---|
+| 既有用例 | 检索同功能规格、JUnit 与模拟客户端场景；优先在旧用例补断言，避免重建平行框架 |
+| 修复前失败 | 尽可能用同一入口复现原错误，记录 expected/actual；无法重现说明缺失条件，不伪造 RED |
+| 状态准备 | 复用基类、现有 GM 和配置解析链；GM 只负责准备，正式请求负责 Act |
+| 关键回归 | 未先查询直接写、边界时间、重复请求、失败重试、跨账号归属、已有类型不退化 |
+| 保存与展示 | 回包、通知、资源增减、领取位一致；保存类缺陷补新对象重载，红点验证亮起和消除 |
+| 隔离与恢复 | 独立账号/轮次、可复现随机与时间源，结束恢复偏移；不得误停其他 Java 进程 |
+| 证据收尾 | 同一 Kind/Batch 复测；保留失败尝试，验证真实测试数和退出码，记录未执行范围 |

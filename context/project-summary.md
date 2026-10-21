@@ -1,3 +1,4 @@
+<!-- context-meta owner:jitawangzi reviewedAt:2026-10-22 expiresAt:2027-01 -->
 # 项目概览 (Project Summary)
 
 ## 1. 项目背景

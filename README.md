@@ -11,6 +11,8 @@
   scripts/       本项目工作区校验工具
   specs/         独立规格与任务仓库，外层 Git 忽略
   workflows/     迁移记录、同步与并行约定
+  commit.cmd     仅提交已手动暂存文件并推送
+  pull.cmd       干净工作树的 fast-forward 拉取
 ```
 
 结构沿用参考项目；内容已适配本项目 Maven、JDK 21、Protobuf、玩家队列与 Module 保存机制。原 `.claude_old/` 保留供人工比较。
@@ -35,11 +37,13 @@ pwsh -NoProfile -File ./ai-sop.ps1 Task -Operation Discover
 - 通用引擎：`https://github.com/jitawangzi/agent-sop.git`，宿主子模块与安装锁共同固定版本。
 - specs remote：`https://github.com/jitawangzi/game_specs.git`，分支 main，按用户确认复用。保留现有功能和历史，新加入个人项目 Dragon 资料与 SopMigration 迁移任务；外层 `.gitignore` 隔离 specs，须独立同步任务与 `.artifacts/`。
 - 宿主 `server.git`、`protocol/` 子仓库及 `.claude_old` 不随本目录推送。
-- aircraft 工作树未改动，其原远端配置由用户另行调整；不得把 aircraft 的 context 分支直接合并到个人项目 main。
+- aircraft 的旧知识工作区已由用户弃用，保留的旧 remote 不代表继续共享当前 main；不得把其 context 分支合并到个人项目。引擎安装副本可随核心兼容修复同步，不改其旧知识内容。
 
 specs 包含参考项目已有功能；这些资料保留用于查阅，不代表个人项目已经实现，也不授予本地会话原有 ACTIVE 任务的权限。个人项目当前需求从 Dragon 或明确新建的功能开始。
 
 本目录可用普通 `git pull --ff-only` / `git add <本次文件>` / `git commit` / `git push` 同步。操作前确认当前目录和 remote，先审阅暂存 diff。specs 按独立仓库同步，不能依赖外层 push。
+
+也可先 `git add -- <本任务文件>`，检查 `git diff --cached`，再 `./commit.cmd -Message "说明"`；拉取使用 `./pull.cmd`。specs 有相同独立入口，不默认 `git add .`，不改变代理设置。
 
 ## 在另一份宿主副本恢复
 
@@ -51,3 +55,5 @@ specs 包含参考项目已有功能；这些资料保留用于查阅，不代�
 ## 验证范围
 
 工作区脚本与配置用 workspace-syntax、workspace-contract 验证；引擎使用自动发现的全量测试套件。本次结果保存在 specs/features/SopMigration/ 的说明及任务记录中。Java 游戏编译、服务启动、数据库操作和业务联调不属于本次迁移的验证结论。
+
+后续审查补充见 [2026-10-22 处理记录](workflows/migration-audit-20261022.md)：增加同步工具回归和定向 JUnit Profile。定向 core 单测与最初文档迁移的验证范围分别记录，均不代表完整游戏业务验收。

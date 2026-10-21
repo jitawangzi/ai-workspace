@@ -1,4 +1,4 @@
-<!-- context-meta owner:jitawangzi reviewedAt:2026-10-21 expiresAt:2027-01-21 -->
+<!-- context-meta owner:jitawangzi reviewedAt:2026-10-22 expiresAt:2027-01 -->
 # 编码规范 (Coding Style)
 
 本文件采用**两层结构**：
@@ -101,6 +101,7 @@
 - **日志记录**: 捕获未知异常时，日志必须包含 `exception.getMessage()` 和完整的堆栈信息。
 
 ### B2. 核心 API 使用规范
+- **禁止静态导入**：本次新增或直接修改代码不使用 `import static`，常量和静态方法通过类名引用，保持来源可见；不为这一规则批量整顿未触达的历史测试。
 - **时间获取**:
   - 禁止: `System.currentTimeMillis()`
   - 必须: `DateUtil.currentTimeMillis()` 或 `DateUtil.currentTimeSeconds()`
@@ -130,7 +131,7 @@
 - 常规 Module 由框架定时全量保存；`alwaysStoreDataInStandaloneTable()` 对应的独立表走 `DbEntity` 契约。确认保存完成后再做冷重载断言，不能把读取同一内存对象当作落库验证。
 - 通用错误码先检查 `ErrorMsgEnum` 是否精确匹配；不同失败原因必须可辨识，不照搬其他项目的数值码或 JSON 失败响应格式。
 - 批量消耗复用 `PlayerHelper.delResources` 的匹配重载，避免逐项循环扣除造成部分成功。奖励经 `PlayerHelper` 处理，返回值与通知各负其责。
-- 时间统一走 `DateUtil`；自然日、时区、活动轮次按本功能既有约定确认，不从其他项目推导默认时区。
+- 时间统一走 `DateUtil`。默认按服务器自然日（00:00）跨天：`PlayerHelper.refreshDay` 使用 `DateUtil.getDay()` 并触发 `EventTypeEnum.NewDay`；自然日比较使用 `isSameDay` / `nextDayStartTime`。已有明确 05:00 业务日的功能沿用 `getDayCustom` / `isSameBusinessDay` 与 `NewDay5`，不得混用两套日标识或为套默认值改变旧规则。部署时区按服务器配置确认，不硬编码其他项目时区；新增活动窗口在功能规则中明确。
 - 配置类和 Manager 是生成产物，不手工改生成结果来规避源配置问题。
 
 ### B6. 兼容、性能与维护经验

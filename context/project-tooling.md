@@ -1,3 +1,4 @@
+<!-- context-meta owner:jitawangzi reviewedAt:2026-10-22 expiresAt:2027-01 -->
 # 项目工具与仓库边界
 
 ## 工具链与编译
@@ -21,9 +22,14 @@ mvn -B '-DskipTests' test-compile
 |---|---|---|
 | `compile` | compile | Maven 生产编译，30 分钟 |
 | `compile-tests` | compile | Maven 生产与测试源码编译，不执行测试，30 分钟 |
+| `java-unit-smoke` | test | core 的 `TagManagerTest`，显式开启测试；需核对实际 Surefire 测试数，不等于业务全覆盖 |
+| `java-tests` | test | reactor 全量 Maven 测试，显式开启测试；运行前审查用例环境依赖，不能默认用于每次任务 |
 | `workspace-syntax` | compile | 本次治理脚本 PowerShell 解析、JSON 与 Profile Schema 校验，5 分钟 |
+| `workspace-script-tests` | test | 临时 Git 仓库同步行为与真实 Java classpath 加载回归 |
 | `workspace-contract` | test | 目录、文档链接、旧知识覆盖、项目适配和安装投影一致性，5 分钟 |
 | `sop-tests` | test | 自动发现引擎全部测试套件，60 分钟 |
+
+Java Profile 通过 `scripts/run-java-tests.ps1` 运行 `test-compile` 和明确版本的 Surefire 3.5.2，避免本机 Maven 默认 Surefire 2.12.4 不执行 JUnit 5；检查本轮新生成的 XML，零执行、全跳过或失败都不能通过。定向测试可使用同一脚本的 `-Project` / `-Test`，按 Task Run 记录。JUnit 5 提供器依据见 [Surefire 官方说明](https://maven.apache.org/surefire-archives/surefire-3.5.5/maven-surefire-plugin/examples/junit-platform.html)。
 
 `workspace-*` 适用于只改工作流资料/脚本的任务，不能作为 Java 改动的编译或行为测试证据。业务变更选择 `compile` 或 `compile-tests`，并运行与功能相关的实际测试。
 
@@ -43,6 +49,10 @@ pwsh -NoProfile -File ./ai-sop.ps1 Task -Operation Run -Feature <Feature> -TaskI
 
 协议生成沿用根 `protocol.bat`；运行前确认协议子仓库状态、生成器和输出范围。生成 Java 代码及生效配置属于实现，不得当成文档延期。
 
+`export_api.bat` 调用 `tools/util-1.0.jar` 中的 `cn.game.util.ai.AiContextExporter`，扫描 game/login/util 的 `@AiExport` API，输出到 `.ai-workspace/context/api-whitelist.md`。运行前设置 `workspace` 为本宿主根，核实工具 JAR 版本；会重写 API 快照，生成后检查 diff 和保留的手工说明，不将执行成功等同于知识审核完成。
+
+`run_client.ps1` 的 classpath 将 simulationclient、util、core、game、protocol 的 `target/classes` 放在依赖 JAR 前；仅存在目录不代表本轮编译了所有模块。当前 simulationclient 的 reactor 依赖由 POM 决定，跨模块改动须编译其实际依赖闭包。
+
 输入指纹在引擎默认范围之上，通过 `verification-inputs.json` 显式纳入本工作区的 README、context、schemas、scripts 和 workflows，确保迁移资料与验证脚本变动能使旧证据过期。仅额外排除宿主根 `logs/`：它由 GameSSLogger、LoggerManager 和 Log4j2 写入，已被宿主 Git 忽略，包含不符合默认 `.log` 后缀规则的实时日志。日志配置和 Java 源码仍纳入检查；没有申请执行豁免，也不补造 Start 起点。共享 specs 中的其他项目历史任务不在本次重新验收；后续接管须回到原项目兼容的策略与代码副本。
 
 ## Git 归属与同步
@@ -53,6 +63,12 @@ pwsh -NoProfile -File ./ai-sop.ps1 Task -Operation Run -Feature <Feature> -TaskI
 - `.ai-workspace/specs/`：按 [工作区 README](../README.md) 中登记的独立归属同步；外层忽略整个 specs，不把它当普通目录打包提交。
 - `protocol/` 本机另有 `.git`，由其既有仓库管理；修改协议前检查真实归属，不能只在宿主根 add 后声称已同步。
 - 每次提交前先 `git -C <仓库根> status` 和检查暂存 diff，只提交当前任务相关内容。保留 `.artifacts/` 输入证据与任务记录，本机 Session/Grant/owner、日志和 `.runtime/` 不作为可迁移权限。
+
+工作区与 specs 各自提供 `commit.cmd` / `pull.cmd`：前者只提交已手动暂存的内容再 push，不执行 `git add .`；后者要求工作树干净并只允许 fast-forward。脚本固定在所在仓库运行，不注入本机代理，不递归同步嵌套仓库。示例：先在目标仓库 `git add -- <本任务文件>`，检查 `git diff --cached`，再 `./commit.cmd -Message "说明"`；拉取执行 `./pull.cmd`。
+
+宿主根的 `.git/info/exclude` 已本地忽略 `.ai-workspace/`、`.claude_old/` 和运行目录；无需为了它们再改共享 `.gitignore`。`.ai-sop` 子模块、锁及生成入口是可复现安装资产，不能一律忽略。旧 `.claude` 删除/替换和已有业务改动继续保留在宿主工作树，待用户整理提交；本轮仅提交两个嵌套知识仓库及引擎真源，不替用户提交宿主根。
+
+共享 specs 保留其他项目历史是既定安排。开始工作优先 `pwsh -NoProfile -File ./ai-sop.ps1 Task -Operation Discover -Feature SopMigration`（实际开发替换为目标功能）；查询旧记录加 `-IncludeHistory`。`LEGACY` 表示尚无任务记录，`PAUSED` / `TASK_BASELINE_REQUIRED` 不代表本项目必须恢复它们；不得因列表出现其他项目旧任务而选择接管。
 
 独立功能需要并行时用独立完整工作副本与运行环境；SOP 不提供跨机器实时锁。参见 [parallel-development.md](../workflows/parallel-development.md)。
 

@@ -4,35 +4,96 @@
     "compile": {
       "kind": "compile",
       "executable": "pwsh",
-      "arguments": ["-NoProfile", "-Command", "$ErrorActionPreference='Stop'; & mvn -B '-DskipTests' compile; exit $LASTEXITCODE"],
+      "arguments": [
+        "-NoProfile",
+        "-Command",
+        "$ErrorActionPreference='Stop'; & mvn -B '-DskipTests' compile; exit $LASTEXITCODE"
+      ],
       "timeoutSeconds": 1800
     },
     "compile-tests": {
       "kind": "compile",
       "executable": "pwsh",
-      "arguments": ["-NoProfile", "-Command", "$ErrorActionPreference='Stop'; & mvn -B '-DskipTests' test-compile; exit $LASTEXITCODE"],
+      "arguments": [
+        "-NoProfile",
+        "-Command",
+        "$ErrorActionPreference='Stop'; & mvn -B '-DskipTests' test-compile; exit $LASTEXITCODE"
+      ],
       "timeoutSeconds": 1800
     },
     "workspace-syntax": {
       "kind": "compile",
       "batch": "workspace-syntax",
       "executable": "pwsh",
-      "arguments": ["-NoProfile", "-File", "./.ai-workspace/scripts/check-workspace.ps1", "-Mode", "Syntax"],
+      "arguments": [
+        "-NoProfile",
+        "-File",
+        "./.ai-workspace/scripts/check-workspace.ps1",
+        "-Mode",
+        "Syntax"
+      ],
       "timeoutSeconds": 300
     },
     "workspace-contract": {
       "kind": "test",
       "batch": "workspace-contract",
       "executable": "pwsh",
-      "arguments": ["-NoProfile", "-File", "./.ai-workspace/scripts/check-workspace.ps1", "-Mode", "Contract"],
+      "arguments": [
+        "-NoProfile",
+        "-File",
+        "./.ai-workspace/scripts/check-workspace.ps1",
+        "-Mode",
+        "Contract"
+      ],
       "timeoutSeconds": 300
     },
     "sop-tests": {
       "kind": "test",
       "batch": "sop-tests",
       "executable": "pwsh",
-      "arguments": ["-NoProfile", "-File", "./.ai-sop/scripts/run-all-tests.ps1"],
+      "arguments": [
+        "-NoProfile",
+        "-File",
+        "./.ai-sop/scripts/run-all-tests.ps1"
+      ],
       "timeoutSeconds": 3600
+    },
+    "java-unit-smoke": {
+      "kind": "test",
+      "batch": "java-unit-smoke",
+      "executable": "pwsh",
+      "arguments": [
+        "-NoProfile",
+        "-File",
+        "./.ai-workspace/scripts/run-java-tests.ps1",
+        "-Project",
+        "core",
+        "-Test",
+        "TagManagerTest"
+      ],
+      "timeoutSeconds": 1800
+    },
+    "java-tests": {
+      "kind": "test",
+      "batch": "java-tests",
+      "executable": "pwsh",
+      "arguments": [
+        "-NoProfile",
+        "-File",
+        "./.ai-workspace/scripts/run-java-tests.ps1"
+      ],
+      "timeoutSeconds": 1800
+    },
+    "workspace-script-tests": {
+      "kind": "test",
+      "batch": "workspace-script-tests",
+      "executable": "pwsh",
+      "arguments": [
+        "-NoProfile",
+        "-File",
+        "./.ai-workspace/scripts/tooling.tests.ps1"
+      ],
+      "timeoutSeconds": 300
     }
   }
 }

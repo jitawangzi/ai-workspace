@@ -5,7 +5,9 @@
     ".ai-workspace/context",
     ".ai-workspace/schemas",
     ".ai-workspace/scripts",
-    ".ai-workspace/workflows"
+    ".ai-workspace/workflows",
+    ".ai-workspace/commit.cmd",
+    ".ai-workspace/pull.cmd"
   ],
   "exclude": [
     {

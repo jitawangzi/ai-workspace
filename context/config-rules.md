@@ -194,3 +194,22 @@ Map<Integer, List<QuestConfig>> typeMap = QuestManager.instance().getTypes();
 - 不把其他项目的配置版本选择算法、绝对路径或表结构当作本项目事实。
 - 表生成与复制前检查工作树 diff；使用既有工具同步，不直接改生成类来掩盖源数据问题。外部工具 `update_copy.bat` 的实际位置和参数由对应配置仓库确认，本仓库不提供该入口。
 - 真实配表验证记录来源版本、路径和环境；隔离夹具不得修改共享原始表。
+
+### 8.1 已核实的仓库路径
+
+| 资产 | 本项目位置 | 使用边界 |
+|---|---|---|
+| 运行 XML | `game/src/main/resources/xml/` | 打包/部署后仍核对实际加载路径和版本，不能把源码目录当成运行中真源 |
+| 生成配置类 | `protocol/src/main/java/cn/game/protocol/generated/config/` | 修改源表后重新生成，禁止手改生成类 |
+| 枚举 / Manager / Helper | 同级 `enume/`、`manager/`、`helper/` | 参数解释与查询方法以当前生成产物为准 |
+| 新 XLSX 辅助生成 | `tools/generate_excel.py` | JSON → XLSX；不是 XLSX → Java/XML 的正式导表器 |
+
+旧 design-architect 的命令可继续使用：`python tools/generate_excel.py <json_path>`。脚本依赖 pandas/openpyxl；JSON 包含 `fileName`、`sheets[]`，每张表含 `name`、`cs`、`fields`、`types`、`comments`、`data`。输出在 JSON 所在目录，四行表头与第 5 节一致；字段列表长度要先核对，脚本会截断/补齐表头，且捕获异常后不保证非零退出码，因此必须检查输出文件及实际表内容。此工具仅辅助新表，正式解析与 `update_copy.bat` 仍由配置仓库既有链路负责。
+
+### 8.2 配置校验与局部扩展
+
+- 在加载/初始化阶段校验引用 ID 存在、数组形状与长度、数量/概率/上下限、周期起止与枚举有效性；不能等玩家扣费后才发现奖励配置损坏。
+- 校验依赖跨表数据时选择所有相关 Manager 已加载的既有扩展点，报错带表名、行 ID、字段与非法值；不在每次玩家请求中全表扫描。
+- 单功能优先新增功能内字段、独立表或既有索引扩展；不能为了本功能改公共字段含义、解析器或加载顺序。已确认公共加载器缺陷才单独定位修复并验证受影响模块。
+- 上线兼容同时检查旧 XML 缺字段、新 XML 被旧服务读取、旧枚举/ID 的行为；保留已约定缺省值，禁止以任意默认奖励掩盖坏表。
+- 生成后审查源表、XML、Java 三者 diff 和实际加载结果；测试 fixture 与共享真实表隔离。
