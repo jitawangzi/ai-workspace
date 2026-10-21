@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "1.0",
+  "include": [
+    ".ai-workspace/README.md",
+    ".ai-workspace/context",
+    ".ai-workspace/schemas",
+    ".ai-workspace/scripts",
+    ".ai-workspace/workflows"
+  ],
+  "exclude": [
+    {
+      "path": "logs",
+      "reason": "运行时日志输出：GameSSLogger、LoggerManager 与 Log4j2 配置写入该目录，宿主 .gitignore 已忽略；包含正在写入且无 .log 后缀的 sslog/log.<date>_<index>，不属于源码、构建输入或测试 fixture。"
+    }
+  ]
+}

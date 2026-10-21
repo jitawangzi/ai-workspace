@@ -1,0 +1,8 @@
+# specs 独立同步；机器级权限及本地运行输出不可随 context 分发。
+/specs/
+/.runtime/
+/.artifacts/
+*.log
+*.tmp
+.DS_Store
+Thumbs.db

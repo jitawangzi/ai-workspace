@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "1.0",
+  "commands": {
+    "compile": {
+      "kind": "compile",
+      "executable": "pwsh",
+      "arguments": ["-NoProfile", "-Command", "$ErrorActionPreference='Stop'; & mvn -B '-DskipTests' compile; exit $LASTEXITCODE"],
+      "timeoutSeconds": 1800
+    },
+    "compile-tests": {
+      "kind": "compile",
+      "executable": "pwsh",
+      "arguments": ["-NoProfile", "-Command", "$ErrorActionPreference='Stop'; & mvn -B '-DskipTests' test-compile; exit $LASTEXITCODE"],
+      "timeoutSeconds": 1800
+    },
+    "workspace-syntax": {
+      "kind": "compile",
+      "batch": "workspace-syntax",
+      "executable": "pwsh",
+      "arguments": ["-NoProfile", "-File", "./.ai-workspace/scripts/check-workspace.ps1", "-Mode", "Syntax"],
+      "timeoutSeconds": 300
+    },
+    "workspace-contract": {
+      "kind": "test",
+      "batch": "workspace-contract",
+      "executable": "pwsh",
+      "arguments": ["-NoProfile", "-File", "./.ai-workspace/scripts/check-workspace.ps1", "-Mode", "Contract"],
+      "timeoutSeconds": 300
+    },
+    "sop-tests": {
+      "kind": "test",
+      "batch": "sop-tests",
+      "executable": "pwsh",
+      "arguments": ["-NoProfile", "-File", "./.ai-sop/scripts/run-all-tests.ps1"],
+      "timeoutSeconds": 3600
+    }
+  }
+}
