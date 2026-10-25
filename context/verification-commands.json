@@ -69,7 +69,9 @@
         "-Project",
         "core",
         "-Test",
-        "TagManagerTest"
+        "TagManagerTest",
+        "-ExpectedTestsFile",
+        "./.ai-workspace/context/test-suites/java-unit-smoke.json"
       ],
       "timeoutSeconds": 1800
     },

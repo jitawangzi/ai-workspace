@@ -31,6 +31,10 @@ mvn -B '-DskipTests' test-compile
 
 Java Profile 通过 `scripts/run-java-tests.ps1` 运行 `test-compile` 和明确版本的 Surefire 3.5.2，避免本机 Maven 默认 Surefire 2.12.4 不执行 JUnit 5；检查本轮新生成的 XML，零执行、全跳过或失败都不能通过。定向测试可使用同一脚本的 `-Project` / `-Test`，按 Task Run 记录。JUnit 5 提供器依据见 [Surefire 官方说明](https://maven.apache.org/surefire-archives/surefire-3.5.5/maven-surefire-plugin/examples/junit-platform.html)。
 
+关键定向任务另传 `-ExpectedTestsFile <JSON文件>`，用非空字符串数组列出完整类名或 `完整类名#方法名`。只核对本轮新报告中的实际 testcase：类目标至少执行一个用例，方法目标必须存在且所有匹配调用均未跳过；其他用例成功不能补足缺失目标。嵌套类使用报告中的 `$` 名称，方法名可用报告原名或不带参数的 Java 方法名。类目标不代表该类所有方法均执行，需要逐方法保证时逐项列出。未传清单时仍保留真实执行数、新报告和失败门禁，兼容原入口。
+
+`java-unit-smoke` 使用 [目标清单](test-suites/java-unit-smoke.json)；报告门禁自身的回归入口为 `scripts/java-test-evidence.tests.ps1`，仅验证报告判定，不冒充 Java 行为测试。清单中的方法变更应随真实测试同步，不能删除缺失项来掩盖未执行。
+
 `workspace-*` 适用于只改工作流资料/脚本的任务，不能作为 Java 改动的编译或行为测试证据。业务变更选择 `compile` 或 `compile-tests`，并运行与功能相关的实际测试。
 
 `sop-tests` 的混合 VCS 回归需要 PATH 中同时存在 `svn` 与 `svnadmin`。Windows 可使用 [VisualSVN 提供的独立命令行工具](https://www.visualsvn.com/downloads/)；本次临时工具只加入测试进程的 PATH，后续运行需自行提供该依赖。

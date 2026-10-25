@@ -1,0 +1,5 @@
+[
+  "cn.game.core.manager.TagManagerTest$TaggedManagerTests#addAndRemoveTag",
+  "cn.game.core.manager.TagManagerTest$HierarchicalTagManagerTests",
+  "cn.game.core.manager.TagManagerTest$EventListenerTests"
+]
