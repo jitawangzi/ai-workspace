@@ -1,38 +1,54 @@
 # 联调的运行目标证据
 
-本规则只用于联调/发布结论；不改变 T1/T2/T3、RecordSync 或 Complete 的机器条件。纯进程内测试继续使用现有 Profile。
+本规则用于联调结论，不改变 T1/T2/T3 或 Complete 条件。纯进程内测试继续使用现有 Profile。
 
-## 执行入口
+## 本机运行入口
 
-`run_client.ps1` 保留原参数；未配置运行观察时输出 `RUNTIME_UNVERIFIED`，成功只表示场景进程退出成功。需要运行身份核对时同时传 `-ExpectedRuntime <发布清单JSON>` 和 `-RuntimeIdentityUri <实际身份接口URL>`；发布验证可加 `-RequireRuntimeIdentity`，缺配置会在启动测试前失败。
+`run_server.ps1` 默认执行 `Prepare`：先核对源码，完整构建六模块，再复制不可原地重建的制品快照到 `.ai-workspace/.runtime/local-runtime/<runId>`。默认 Apollo 为回环地址 `http://127.0.0.1:9888`、集群 `SYQ`，与现有独立启动脚本一致。仅准备不会启动业务服务、清理日志或结束其他进程。
 
-期望清单必须从待发布制品/配置生成，至少包括这些字段（示意字段，不能照抄为实际证据）：
+```powershell
+./run_server.ps1 -Action Prepare -ApolloUri 'http://127.0.0.1:9888' -ApolloCluster SYQ
+./run_server.ps1 -Action Start -Snapshot '<上一步输出目录>' -ConfirmDataScope
+./run_server.ps1 -Action Status -Snapshot '<同一目录>'
+./run_server.ps1 -Action Stop -Snapshot '<同一目录>'
+```
+
+Start 前必须确认该 Apollo 配置指向预期测试存储：Game 启动会执行现有迁移、机器人和缓存初始化。脚本不会自动隔离共享数据库。Start 重新生成 Game/Login 身份并与 Prepare 时的独立期望逐字段比较；漂移在启动业务服务之前拒绝。启动后有界等待 Game 身份和端口进程归属，失败清理本次登记的进程。此处的就绪不等于 Login 业务或完整场景通过。
+
+Stop 只结束本目录登记、PID/启动时间/启动标识/主类均相符的进程。重新运行需 Prepare 新快照；不要在正在核验的快照中编译。默认只启动 Game/Login；其他服务按具体场景另行准备。
+
+## 独立期望与实际身份
+
+期望由制品目录和配置独立采集产生 `expected-runtime.json`，不读取运行身份接口。Game 仅在显式 `game.runtimeIdentity.enabled=true` 且 `server.run.mode=test` 时启用；接口绑定 `127.0.0.1`，路径 `/runtime-identity`，默认端口 17011。生产启动不会因此自动公开接口。
 
 | 字段 | 来源 |
 |---|---|
 | schemaVersion | 字符串 `1.0` |
-| targetId | 测试玩家实际目标区服，与场景配置 `game.server.id` 核对 |
-| buildId | 构建系统产生的版本标识 |
-| sourceDigest | 构建输入 SHA-256，64 位小写十六进制 |
-| artifactSha256 | 实际运行制品集合的 SHA-256 |
-| configSha256 | 生效配置集合摘要，不能只取代码仓默认配置 |
-| protocolSha256 | 实际生效协议版本摘要 |
-| dataNamespace | 隔离测试数据范围标识，不含凭据 |
+| targetId | Game 物理进程节点名，来自实际启动参数；与逻辑区服分别核对 |
+| buildId | 本次快照唯一构建标识 |
+| sourceDigest | 根/六模块 POM 与 src 构建输入摘要 |
+| artifactSha256 | 实际 Java 类路径顺序、路径名和文件字节摘要 |
+| configSha256 | Apollo application/config/jdbc/redisson/zookeeper、所选 Spring XML 和相关启动属性摘要 |
+| protocolSha256 | 实际加载 PbProtocol 所在制品摘要 |
+| dataNamespace | 数据库、Redis、Zookeeper 配置的摘要标识，不保存明文凭据 |
 
-身份接口是部署环境的只读适配契约，当前仓库未提供可直接使用的生产接口地址，也未新增游戏公网协议。接口需从实际运行进程的启动制品和生效配置返回以上字段，并附 `instanceId`、ISO 8601 `startedAt`，原样返回请求 query 的 `challenge`。不能通过读取调用者的期望清单生成“实际”结果。实例后面的负载均衡不能随机返回不同节点；多节点测试须按节点取证。
-
-采集器在测试前后发出不同 challenge，拒绝重定向、身份不匹配、前后版本变化和实例重启。接口应由部署方在内网/已授权访问边界提供，远程传输使用受信 HTTPS；此工具不提供身份签名认证。URI 不允许凭据/query/fragment，输出只保留契约字段。连接失败或缺字段不标记通过。
+身份接口返回启动时独立记录的 `instanceId`、实际 JVM `startedAt` 和本次 query `challenge`。每次观察重新检查磁盘与配置；Apollo 更新或摘要变化永久撤销本次严格身份，恢复原配置也不能让旧进程重新通过。严格模式拒绝 `hot.update=true`，避免内存热替换绕过磁盘摘要。该契约是受控测试环境内的关联证据，不提供远端密码学证明；源码摘要不是可复现构建证明。
 
 ## 场景与观察的关联
 
-观测接口与模拟客户端是两条连接。工具输出 `OBSERVED_MATCH` 仅证明接口报告与期望一致，`scenarioRouting=REQUIRES_SCENARIO_TARGET_EVIDENCE` 明示尚未自动证明场景落到该节点。场景日志还须保留所连网关、目标区服和由服务端返回的实际实例标识；有代理、跨服转发时追踪实际处理实例。单独读取 `ServerTestContext.serverId` 只证明客户端配置，不证明实际路由。
-
-目前缺少实际部署的身份接口和场景侧处理实例回传，完整目标关联仍需宿主接入后验证；不得把本次采集器的回归测试或配置字段存在，报告为完整游戏联调通过。旧入口保持可用，但不补造这些证据。
-
-使用现有 Task Run 保存命令、退出码和 `RUNTIME_OBSERVATION` JSON；不复制成功摘要来覆盖失败批次。期望清单变更须按现有规则留痕。参数示例：
-
 ```powershell
-& ./run_client.ps1 -TestClass '<实际完整类名>' -ExpectedRuntime '<实际发布清单路径>' -RuntimeIdentityUri '<实际只读身份接口>' -RequireRuntimeIdentity
+./run_client.ps1 -TestClass cn.game.simulation.test.ai.ClientRuntimeIdentityTest `
+  -RuntimeSnapshot '<快照目录>' -ExpectedRuntime '<快照目录>/expected-runtime.json' `
+  -RuntimeIdentityUri 'http://127.0.0.1:17011/runtime-identity' -RequireRuntimeIdentity `
+  -GameId game_test -LogicServerId server1 -LoginUrl 'http://127.0.0.1:9390' -TestAccount '<本次独立测试账号>'
 ```
 
-占位符必须替换为真实值；此示例不代表接口已部署。采集器行为回归使用 Profile `runtime-evidence-tests`，仅使用本机 HTTP 夹具。
+占位符须替换为真实值。`RuntimeSnapshot` 使用快照类路径并跳过编译；一般入口仍支持原有即时编译。严格身份参数必须成对，且必须指定预期逻辑区服。账号、登录地址和物理节点可显式覆盖，不修改共享 `env.properties`。
+
+`ClientBaseScenarioTest` 在真实登录完成后，通过当前玩家连接发送既有测试 GM 协议的 `runtimeIdentity <challenge>`；服务校验在线玩家及当前连接，返回同一 Game 进程身份、玩家 ID、实际逻辑区服。场景前后使用不同挑战，并核对独立期望、HTTP 实例、玩家及指定逻辑区服。`ClientRuntimeIdentityTest` 实际执行心跳请求；不发奖励或修改存量玩家。
+
+HTTP 前后观察只证明接口的身份稳定。只有场景前后探针也匹配时，`scenarioRouting=AUTHENTICATED_GAME_NODE_PROBES_MATCH` 才成立；它证明两个探针在同一认证节点处理，不证明场景中每一个跨服业务请求均由该节点执行。跨服业务仍须提供对应处理链证据。场景失败时仍尝试后探针，保留原异常及次要观察异常；失败或未完成报告只保留白名单字段，HTTP 后观察失败也不会丢失已收到的场景证据。
+
+严格身份采集与协议探针单独使用 30 秒有界等待，普通业务协议保持原 5 秒时限。
+
+使用 Task Run 保存实际命令、退出码和 `RUNTIME_OBSERVATION` JSON。Prepare 单独记录构建；测试使用 `scripts/check-local-runtime.ps1 -Snapshot <新快照> -LoginUrl <本机登录地址> -LogicServerId server1 -ConfirmDataScope`，它把 Start、场景、Stop 放在同一生命周期，Stop 在 finally 中。可加 `-VerifyArtifactRevocation` 验证专属快照变更和恢复后均拒绝身份；不要用 Task Run 启动服务后立即退出，否则后台进程继承的输出句柄会使证据采集失败。旧入口未配置观察时输出 `RUNTIME_UNVERIFIED`，进程成功不能宣称目标核验完成。`runtime-evidence-tests` 覆盖本机 HTTP 夹具、失败证据和真实 Java 参数编码；`runtime-identity-java` 覆盖摘要与协议身份判定，均不能替代实际联调。

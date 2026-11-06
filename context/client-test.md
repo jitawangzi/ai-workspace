@@ -95,7 +95,7 @@ public class ClientMailTest extends ClientBaseScenarioTest {
 
 ### 3.1 按范围编译与启动
 常规验证先用 project-tooling.md 的 Maven 编译与定向测试。只有本次需要完整协议联调且已确认环境、进程归属和账号时，才启动/重启服务；不要把启动完整环境作为每次任务的默认步骤。
-以下既有脚本会编译并清理/启动服务，执行前须检查脚本中的环境和进程选择范围：
+以下入口默认只准备独立制品快照；实际启动使用 `-Action Start -Snapshot <目录> -ConfirmDataScope`，先确认该快照的测试存储范围。身份与逻辑区服核对见 [运行目标证据](runtime-verification.md)：
 
 ```powershell
 pwsh -NoProfile -File ./run_server.ps1

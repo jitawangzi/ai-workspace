@@ -39,7 +39,8 @@ mvn -B '-DskipTests' test-compile
 | `workspace-contract` | test | 目录、文档链接、旧知识覆盖、项目适配和安装投影一致性，5 分钟 |
 | `sop-tests` | test | 自动发现引擎全部测试套件，60 分钟 |
 | `state-integrity` | test | game 模块保存快照、保存顺序、风险恢复和支付幂等四组现有测试；逐方法检查目标清单，不证明真实数据库或崩溃恢复 |
-| `runtime-evidence-tests` | test | 运行身份采集器的本机 HTTP 夹具与失败判定；不连接游戏服 |
+| `runtime-evidence-tests` | test | 本机 HTTP 夹具、失败证据、真实 Java 参数编码；不连接游戏服 |
+| `runtime-identity-java` | test | 制品与配置摘要、挑战/实例/玩家/逻辑区服绑定的定向 Java 用例 |
 
 Java Profile 通过 `scripts/run-java-tests.ps1` 运行 `test-compile` 和明确版本的 Surefire 3.5.2，避免本机 Maven 默认 Surefire 2.12.4 不执行 JUnit 5；检查本轮新生成的 XML，零执行、全跳过或失败都不能通过。定向测试可使用同一脚本的 `-Project` / `-Test`，按 Task Run 记录。JUnit 5 提供器依据见 [Surefire 官方说明](https://maven.apache.org/surefire-archives/surefire-3.5.5/maven-surefire-plugin/examples/junit-platform.html)。
 
@@ -61,7 +62,7 @@ pwsh -NoProfile -File ./ai-sop.ps1 Task -Operation Run -Feature <Feature> -TaskI
 & ./ai-sop.ps1 Task -Operation Run -Feature <Feature> -TaskId <TaskId> -Agent <Agent> -Kind test -Batch simulation -Executable pwsh -Arguments @('-NoProfile','-File','./run_client.ps1','-TestClass','<实际完整类名>') -TimeoutSeconds 600
 ```
 
-尖括号参数必须替换。先核对目标类、断言与环境；不默认启动完整服务。`run_server.ps1` 会清理/启动进程，应先核实目标实例归属；日常编译不需要运行它。测试具体规则见 [client-test.md](client-test.md)。
+尖括号参数必须替换。先核对目标类、断言与环境；不默认启动完整服务。`run_server.ps1` 默认仅 Prepare 独立制品快照；Start 须确认测试数据范围，Stop 仅处理本次登记的进程。完整入口见 [runtime-verification.md](runtime-verification.md)，日常编译不需要启动服务。测试具体规则见 [client-test.md](client-test.md)。
 
 协议生成沿用根 `protocol.bat`；运行前确认协议子仓库状态、生成器和输出范围。生成 Java 代码及生效配置属于实现，不得当成文档延期。
 

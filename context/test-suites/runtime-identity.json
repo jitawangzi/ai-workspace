@@ -1,0 +1,11 @@
+[
+  "cn.game.games.core.runtime.RuntimeIdentityInventoryTest#artifactContentChangesIdentity",
+  "cn.game.games.core.runtime.RuntimeIdentityInventoryTest#classpathOrderChangesIdentity",
+  "cn.game.games.core.runtime.RuntimeIdentityInventoryTest#externalClasspathIsRejected",
+  "cn.game.games.core.runtime.RuntimeIdentityInventoryTest#emptyArtifactsAreRejected",
+  "cn.game.games.core.runtime.RuntimeIdentityInventoryTest#configurationEncodingIsUnambiguous",
+  "cn.game.games.core.runtime.RuntimeIdentityInventoryTest#disabledIdentityAndInvalidChallengesFailClosed",
+  "cn.game.simulation.test.ai.ScenarioRuntimeEvidenceTest#actualIdentityMatches",
+  "cn.game.simulation.test.ai.ScenarioRuntimeEvidenceTest#releaseMismatchFails",
+  "cn.game.simulation.test.ai.ScenarioRuntimeEvidenceTest#challengeInstanceAndPlayerAreBound"
+]

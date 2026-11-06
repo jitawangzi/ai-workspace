@@ -124,6 +124,21 @@
         "./.ai-workspace/scripts/runtime-evidence.tests.ps1"
       ],
       "timeoutSeconds": 300
+    },
+    "runtime-identity-java": {
+      "batch": "runtime-identity-java",
+      "kind": "test",
+      "executable": "pwsh",
+      "timeoutSeconds": 1800,
+      "arguments": [
+        "-NoProfile",
+        "-File",
+        "./.ai-workspace/scripts/run-java-tests.ps1",
+        "-Test",
+        "RuntimeIdentityInventoryTest,ScenarioRuntimeEvidenceTest",
+        "-ExpectedTestsFile",
+        "./.ai-workspace/context/test-suites/runtime-identity.json"
+      ]
     }
   }
 }
