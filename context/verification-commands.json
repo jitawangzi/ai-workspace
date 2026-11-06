@@ -135,10 +135,21 @@
         "-File",
         "./.ai-workspace/scripts/run-java-tests.ps1",
         "-Test",
-        "RuntimeIdentityInventoryTest,ScenarioRuntimeEvidenceTest",
+        "RuntimeIdentityInventoryTest,ScenarioRuntimeEvidenceTest,FrozenApolloTest",
         "-ExpectedTestsFile",
         "./.ai-workspace/context/test-suites/runtime-identity.json"
       ]
+    },
+    "runtime-concurrency-tests": {
+      "executable": "pwsh",
+      "timeoutSeconds": 180,
+      "batch": "runtime-concurrency-tests",
+      "arguments": [
+        "-NoProfile",
+        "-File",
+        "./.ai-workspace/scripts/runtime-concurrency.tests.ps1"
+      ],
+      "kind": "test"
     }
   }
 }

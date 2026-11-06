@@ -9,5 +9,12 @@
   "cn.game.games.core.runtime.RuntimeIdentityInventoryTest#loginManifestAppliesStartupNodeBeforeCollectingInputs",
   "cn.game.simulation.test.ai.ScenarioRuntimeEvidenceTest#actualIdentityMatches",
   "cn.game.simulation.test.ai.ScenarioRuntimeEvidenceTest#releaseMismatchFails",
-  "cn.game.simulation.test.ai.ScenarioRuntimeEvidenceTest#challengeInstanceAndPlayerAreBound"
+  "cn.game.simulation.test.ai.ScenarioRuntimeEvidenceTest#challengeInstanceAndPlayerAreBound",
+  "cn.game.games.core.runtime.RuntimeIdentityInventoryTest#resourceLoadThenRestoreBeforeFirstProbeRevokesIdentity",
+  "cn.game.games.core.runtime.RuntimeIdentityInventoryTest#resourceCreateFailureAndOverflowRevokeIdentity",
+  "cn.game.util.runtime.FrozenApolloTest#strictSpiFreezesValuesAndRevokesOnRestoredUpdate",
+  "cn.game.util.runtime.FrozenApolloTest#ordinaryModeDoesNotReplaceApollo",
+  "cn.game.util.runtime.FrozenApolloTest#externalSpringConfigurationIsRejected",
+  "cn.game.util.runtime.FrozenApolloTest#propertyUpdatesDoNotRedirectStorageAndRemainRevoked",
+  "cn.game.util.runtime.FrozenApolloTest#springLog4jNameDoesNotBypassValidation"
 ]

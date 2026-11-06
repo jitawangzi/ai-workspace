@@ -19,6 +19,7 @@ $hostRoot=Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $runtimeRoot=Join-Path $hostRoot '.ai-workspace/.runtime/local-runtime'
 . (Join-Path $PSScriptRoot 'runtime-evidence.ps1')
 . (Join-Path $PSScriptRoot 'native-arguments.ps1')
+. (Join-Path $PSScriptRoot 'runtime-state.ps1')
 function RequireSuccess([string]$Operation) { if ($LASTEXITCODE -ne 0) { throw "LOCAL_RUNTIME_FAILED:$Operation" } }
 function SourceDigest {
     $items=@(Get-Item -LiteralPath (Join-Path $hostRoot 'pom.xml'))
@@ -37,7 +38,7 @@ function RuntimeArgs($Settings,[string]$App) {
         "-Dworkspace=$hostRoot","-Dmetafolder=$(Join-Path (Split-Path -Parent $hostRoot) 'configs/Server')",
         '-Dfile.encoding=UTF-8','--add-opens=java.base/java.lang=ALL-UNNAMED','--add-opens=java.base/java.util=ALL-UNNAMED',
         '-Dio.netty.tryReflectionSetAccessible=true','-Dzookeeper.clientCnxnSocket=org.apache.zookeeper.ClientCnxnSocketNetty',
-        "-Druntime.launchId=$($Settings.runId)","-Dgame.runtimeIdentity.root=$(Join-Path $Snapshot 'artifacts')",'-cp',$classpath)
+        '-Druntime.config.freeze=true',"-Druntime.launchId=$($Settings.runId)","-Dgame.runtimeIdentity.root=$(Join-Path $Snapshot 'artifacts')",'-cp',$classpath)
 }
 function StartJava([string[]]$JavaArguments,[string]$Name) {
     $workingDirectory=Join-Path $Snapshot ('work/'+$Name)
@@ -95,12 +96,14 @@ if ($Action -eq 'Prepare') {
 if (-not $Snapshot) { throw 'LOCAL_RUNTIME_SNAPSHOT_REQUIRED' }
 $Snapshot=(Resolve-Path -LiteralPath $Snapshot).Path
 if (-not $Snapshot.StartsWith($runtimeRoot+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) { throw 'LOCAL_RUNTIME_SNAPSHOT_OUTSIDE_WORKSPACE' }
+$lifecycleLock=Enter-RuntimeSnapshotLock $Snapshot
+try {
 $settings=Get-Content -LiteralPath (Join-Path $Snapshot 'settings.json') -Raw|ConvertFrom-Json
 $statePath=Join-Path $Snapshot 'processes.json'
 if ($Action -eq 'Start') {
     if (-not $ConfirmDataScope) { throw 'LOCAL_RUNTIME_DATA_SCOPE_REQUIRED: Game startup runs existing migrations; confirm this snapshot uses the intended test storage' }
     if (Test-Path -LiteralPath $statePath) { throw 'LOCAL_RUNTIME_ALREADY_STARTED: inspect Status; prepare a new snapshot for another run' }
-    # 在任何业务进程启动前重新核对两端配置，数据目标漂移不能等到启动写库后发现。
+    # 外部预检仅用于提前诊断；两个业务 JVM 仍须在存储初始化前核对自己的固定配置。
     foreach ($app in @('game','login')) {
         $argsList=RuntimeArgs $settings $app
         $id=if ($app -eq 'game') { $settings.gameId } else { $settings.loginId }
@@ -116,12 +119,14 @@ if ($Action -eq 'Start') {
     try {
     foreach ($app in @('login','game')) {
         $arguments=RuntimeArgs $settings $app
+        $expectedFile=if ($app -eq 'game') { 'expected-runtime.json' } else { 'expected-login.json' }
+        $arguments=@("-Druntime.expected=$(Join-Path $Snapshot $expectedFile)")+$arguments
         if ($app -eq 'game') { $arguments=@('-Dgame.runtimeIdentity.enabled=true',"-Dgame.runtimeIdentity.port=$($settings.identityPort)")+$arguments }
         $main=if ($app -eq 'game') { 'cn.game.games.net.game.GameServer' } else { 'cn.game.login.LoginServer' }
         $id=if ($app -eq 'game') { $settings.gameId } else { $settings.loginId }
         $process=StartJava ($arguments+@($main,$id)) $app
         $records+=@{app=$app;pid=$process.Id;startedAt=$process.StartTime.ToUniversalTime().ToString('o');main=$main;runId=$settings.runId}
-        $records|ConvertTo-Json -AsArray|Set-Content -LiteralPath $statePath -Encoding utf8
+        Write-RuntimeProcessState $statePath $records
     }
     $deadline=[DateTimeOffset]::UtcNow.AddSeconds(180)
     $ready=$false
@@ -137,8 +142,17 @@ if ($Action -eq 'Start') {
     }
     if (-not $ready) { throw 'LOCAL_RUNTIME_READY_TIMEOUT' }
     } catch {
-        foreach ($record in $records) { $p=OwnedProcess $record; if ($p) { Stop-Process -Id $p.Id } }
-        throw
+        $startFailure=$_
+        foreach ($record in $records) {
+            try {
+                $p=OwnedProcess $record
+                if ($p) { Stop-Process -Id $p.Id; Wait-Process -Id $p.Id -Timeout 10 -ErrorAction SilentlyContinue }
+            } catch {
+                # 一条清理失败不能跳过后续进程；登记失败时也保留内存中的身份供恢复。
+                Write-Warning ('LOCAL_RUNTIME_PARTIAL_CLEANUP_FAILED:'+($record|ConvertTo-Json -Compress)+':'+$_.Exception.Message)
+            }
+        }
+        throw $startFailure
     }
     Write-Output "LOCAL_RUNTIME_STARTED:$Snapshot"
     exit 0
@@ -157,3 +171,4 @@ foreach ($record in $storedRecords) {
     elseif ($process) { $stopFailures+='PROCESS_IDENTITY_CHANGED:'+ $record.app }
 }
 if ($stopFailures.Count) { throw ('LOCAL_RUNTIME_STOP_INCOMPLETE:'+($stopFailures -join ';')) }
+} finally { $lifecycleLock.Dispose() }

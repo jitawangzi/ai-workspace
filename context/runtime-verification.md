@@ -13,7 +13,9 @@
 ./run_server.ps1 -Action Stop -Snapshot '<同一目录>'
 ```
 
-Start 前必须确认该 Apollo 配置指向预期测试存储：Game 启动会执行现有迁移、机器人和缓存初始化。脚本不会自动隔离共享数据库。Start 重新生成 Game/Login 身份并与 Prepare 时的独立期望逐字段比较；漂移在启动业务服务之前拒绝。启动后有界等待 Game 身份和端口进程归属，失败清理本次登记的进程。此处的就绪不等于 Login 业务或完整场景通过。
+Start 前必须确认该 Apollo 配置指向预期测试存储：Game 启动会执行现有迁移、机器人和缓存初始化。脚本不会自动隔离共享数据库。Start 外部预检仅作提前诊断。Game/Login 实际 JVM 都在日志配置、业务 Config、Redis、ZK、Spring/JDBC 初始化之前执行共同屏障：固定 Apollo properties/XML 与已声明业务键的系统/环境回退值，再计算实际身份并与各自 Prepare 独立期望完整比较；缺少期望、解析失败或漂移直接退出。业务后续全部通过 Apollo SPI 读取同一份内存配置；远端更新不改变存储目标，仅永久撤销身份。未声明的 namespace、文件及格式拒绝读取；Spring XML 的 import、location/locations 属性及同名 Bean property（含 placeholder、override、util:properties）与 DTD 拒绝使用，避免固定正文后再加载未核验配置。启动后有界等待 Game 身份和端口进程归属，失败清理本次登记的进程。此处的就绪不等于 Login 业务或完整场景通过。
+
+Start/Stop/Status 从检查前到操作结束持有同一快照跨进程排他锁；竞争立即报告 `LOCAL_RUNTIME_BUSY`。登记同目录临时写入并原子替换，失败保持旧 JSON；部分启动失败逐条清理全部已启动进程，清理异常不跳过后续进程。锁文件保留，仅释放句柄。完整验收入口只在自己成功启动后清理，对短暂锁忙有界重试，不能误停另一调用的服务。`processes.json` 存在时不可重复启动。
 
 Stop 只结束本目录登记、PID/启动时间/启动标识/主类均相符的进程。重新运行需 Prepare 新快照；不要在正在核验的快照中编译。默认只启动 Game/Login；其他服务按具体场景另行准备。
 
@@ -28,11 +30,11 @@ Stop 只结束本目录登记、PID/启动时间/启动标识/主类均相符的
 | buildId | 本次快照唯一构建标识 |
 | sourceDigest | 根/六模块 POM 与 src 构建输入摘要 |
 | artifactSha256 | 实际 Java 类路径顺序、路径名和文件字节摘要 |
-| configSha256 | Apollo application/config/jdbc/redisson/zookeeper、所选 Spring XML 和相关启动属性摘要 |
+| configSha256 | 固定的 Apollo application/config/jdbc/redisson/zookeeper/log4j2、所选 Spring 与日志 XML、已声明业务键的系统/环境有效回退和相关启动属性摘要 |
 | protocolSha256 | 实际加载 PbProtocol 所在制品摘要 |
 | dataNamespace | 数据库、Redis、Zookeeper 配置的摘要标识，不保存明文凭据 |
 
-身份接口返回启动时独立记录的 `instanceId`、实际 JVM `startedAt` 和本次 query `challenge`。每次观察重新检查磁盘与配置；Apollo 更新或摘要变化永久撤销本次严格身份，恢复原配置也不能让旧进程重新通过。严格模式拒绝 `hot.update=true`，避免内存热替换绕过磁盘摘要。该契约是受控测试环境内的关联证据，不提供远端密码学证明；源码摘要不是可复现构建证明。
+身份接口返回启动时独立记录的 `instanceId`、实际 JVM `startedAt` 和本次 query `challenge`。每次观察重新检查磁盘与配置；Apollo 更新或摘要变化永久撤销本次严格身份，恢复原配置也不能让旧进程重新通过。严格模式拒绝 `hot.update=true`，避免内存类热替换绕过磁盘摘要。XML 热加载仍保留，但真实 CREATE/MODIFY 分派在任何解析前递增资源版本，OVERFLOW 同样递增；身份采集首尾核对启动资源版本，解析失败或恢复原文件都不能恢复身份。普通启动继续原行为。该契约是受控测试环境内的关联证据，不提供远端密码学证明；源码摘要不是可复现构建证明。
 
 ## 场景与观察的关联
 
@@ -51,4 +53,15 @@ HTTP 前后观察只证明接口的身份稳定。只有场景前后探针也匹
 
 严格身份采集与协议探针单独使用 30 秒有界等待，普通业务协议保持原 5 秒时限。
 
-使用 Task Run 保存实际命令、退出码和 `RUNTIME_OBSERVATION` JSON。Prepare 单独记录构建；测试使用 `scripts/check-local-runtime.ps1 -Snapshot <新快照> -LoginUrl <本机登录地址> -LogicServerId server1 -ConfirmDataScope`，它把 Start、场景、Stop 放在同一生命周期，Stop 在 finally 中。可加 `-VerifyArtifactRevocation` 验证专属快照变更和恢复后均拒绝身份；不要用 Task Run 启动服务后立即退出，否则后台进程继承的输出句柄会使证据采集失败。旧入口未配置观察时输出 `RUNTIME_UNVERIFIED`，进程成功不能宣称目标核验完成。`runtime-evidence-tests` 覆盖本机 HTTP 夹具、失败证据和真实 Java 参数编码；`runtime-identity-java` 覆盖摘要与协议身份判定，均不能替代实际联调。
+使用 Task Run 保存实际命令、退出码和 `RUNTIME_OBSERVATION` JSON。Prepare 单独记录构建；测试使用 `scripts/check-local-runtime.ps1 -Snapshot <新快照> -LoginUrl <本机登录地址> -LogicServerId server1 -ConfirmDataScope`，它把 Start、场景、Stop 放在同一生命周期，Stop 在 finally 中。可加 `-VerifyArtifactRevocation` 验证专属快照变更和恢复后均拒绝身份；或使用新快照加 `-VerifyXmlRevocation`，追加合法 XML 注释并等待真实加载成功，恢复字节后才执行首次探针，必须拒绝。两种撤销分别使用新快照。不要用 Task Run 启动服务后立即退出，否则后台进程继承的输出句柄会使证据采集失败。旧入口未配置观察时输出 `RUNTIME_UNVERIFIED`，进程成功不能宣称目标核验完成。`runtime-evidence-tests` 覆盖本机 HTTP 夹具、失败证据和真实 Java 参数编码；`runtime-identity-java` 覆盖摘要与协议身份判定，均不能替代实际联调。
+
+
+## 边界回归
+
+"runtime-identity-java" 包含独立 JVM 的真实 Apollo SPI、普通模式兼容和 XML 修改→加载→恢复→首次检查；"runtime-concurrency-tests" 用独立 pwsh 进程及受控业务夹具覆盖排他锁、失败调用清理归属、原子写失败和锁持有者退出。"scripts/runtime-startup-boundary.tests.ps1 -Snapshot <新快照>" 实际运行两个业务入口，将独立期望生成后的有效存储配置覆盖到本机陷阱端口，核对拒绝原因与零连接，并验证缺失/损坏期望；它不修改共享 Apollo。单测/陷阱测试与完整真实场景分别记录，不能相互替代。
+
+严格配置支持当前启动链使用的标准 XML 配置入口：全部 springArgs 文件均验证（包括名为 log4j2.xml 的文件）；带命名空间的 location/locations 及引用写法也拒绝。直接声明的 PropertiesLoaderSupport / YamlProcessor 属性加载器及子类、无法解析的 Bean 类型、factory-method/factory-bean 间接创建方式在严格模式下不支持。此规则不等于审计任意自定义 Bean 或扫描后 Java 代码。
+
+系统/环境中已有 Apollo 枚举键的覆盖自动固定。仅存在于系统/环境中的业务键须在独立期望与真实启动两端一致声明 JVM 参数 runtime.config.overrideKeys（逗号分隔）；声明和值均计入身份。通过 Apollo Config API 请求未声明但存在于环境的键会直接拒绝（含类型读取），不悄悄忽略覆盖。Spring Environment 和默认系统 Bean 只暴露已声明的固定映射，未声明键按缺失处理。终端或执行器每次改变的无关环境标识不再参与业务身份。
+
+严格 Spring 上下文使用同一份已核验的系统/环境映射（含默认 systemProperties/systemEnvironment Bean），并拒绝无 location 的额外 placeholder/override 配置器及 SpEL。XML 解码时和最终值解析时均检查，防止占位符展开后拼成动态表达式。普通启动仍使用原上下文。
