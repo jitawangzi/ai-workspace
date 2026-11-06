@@ -5,6 +5,8 @@
   "cn.game.games.core.runtime.RuntimeIdentityInventoryTest#emptyArtifactsAreRejected",
   "cn.game.games.core.runtime.RuntimeIdentityInventoryTest#configurationEncodingIsUnambiguous",
   "cn.game.games.core.runtime.RuntimeIdentityInventoryTest#disabledIdentityAndInvalidChallengesFailClosed",
+  "cn.game.games.core.runtime.RuntimeIdentityInventoryTest#gameManifestAppliesStartupNodeBeforeCollectingInputs",
+  "cn.game.games.core.runtime.RuntimeIdentityInventoryTest#loginManifestAppliesStartupNodeBeforeCollectingInputs",
   "cn.game.simulation.test.ai.ScenarioRuntimeEvidenceTest#actualIdentityMatches",
   "cn.game.simulation.test.ai.ScenarioRuntimeEvidenceTest#releaseMismatchFails",
   "cn.game.simulation.test.ai.ScenarioRuntimeEvidenceTest#challengeInstanceAndPlayerAreBound"

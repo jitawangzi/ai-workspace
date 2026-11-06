@@ -19,7 +19,7 @@ Stop 只结束本目录登记、PID/启动时间/启动标识/主类均相符的
 
 ## 独立期望与实际身份
 
-期望由制品目录和配置独立采集产生 `expected-runtime.json`，不读取运行身份接口。Game 仅在显式 `game.runtimeIdentity.enabled=true` 且 `server.run.mode=test` 时启用；接口绑定 `127.0.0.1`，路径 `/runtime-identity`，默认端口 17011。生产启动不会因此自动公开接口。
+期望由制品目录和配置独立采集产生 `expected-runtime.json`，不读取运行身份接口。清单入口按 `app.id` 复用 Game/Login 的命令行节点解析，在读取 Apollo 前设置对应的 `game.server.id` / `login.server.id`；配置中的默认节点名可以与实际启动节点不同，不能通过抄取身份接口的摘要修正期望。Game 仅在显式 `game.runtimeIdentity.enabled=true` 且 `server.run.mode=test` 时启用；接口绑定 `127.0.0.1`，路径 `/runtime-identity`，默认端口 17011。生产启动不会因此自动公开接口。
 
 | 字段 | 来源 |
 |---|---|
