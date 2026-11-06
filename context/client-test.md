@@ -2,6 +2,8 @@
 
 # 模拟客户端测试指南
 
+联调结果须区分场景进程通过与实际目标已核验，使用[运行目标证据](runtime-verification.md)；保存/幂等场景复用[状态一致性验证](state-integrity-testing.md)。二者按任务范围使用，不改变默认档位。
+
 本文档旨在指导开发者如何使用模拟客户端工程（Simulation Client）进行游戏服务器的功能测试。通过模拟客户端，我们可以启动虚拟玩家，发送指定功能的协议与服务器交互，并处理服务器的返回数据。
 
 > **⚠️ 前置阅读**
@@ -111,7 +113,7 @@ pwsh -NoProfile -File ./run_client.ps1 -TestClass <完整类名>
 
 执行脚本后，请根据控制台输出判断结果：
 
-*   ✅ **TEST PASSED**
+*   ✅ **SCENARIO_PROCESS_PASS**
     *   **含义**：脚本执行成功；仍须核对目标断言确实执行、无跳过。该提示不等于 SOP 任务 Complete 或完整业务验收。
 
 *   ❌ **COMPILATION FAILED**

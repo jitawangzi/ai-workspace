@@ -19,6 +19,9 @@
 | Protobuf 定义及兼容 | [proto-rules.md](proto-rules.md) |
 | 表结构、生成类、配置来源 | [config-rules.md](config-rules.md) |
 | 测试与模拟客户端 | [client-test.md](client-test.md) |
+| 联调运行实例、制品和配置证据 | [runtime-verification.md](runtime-verification.md) |
+| 保存、幂等、失败与恢复专项验证 | [state-integrity-testing.md](state-integrity-testing.md) |
+| 实际发布、灰度、迁移或恢复演练 | [发布与恢复](../workflows/release-recovery.md) |
 | 高风险逻辑检查；已要求 logic-auditor 时 | [logic-audit-game-server.md](logic-audit-game-server.md) |
 | 活动、任务、事件、条件、奖励、红点 | [business-patterns/README.md](business-patterns/README.md) |
 

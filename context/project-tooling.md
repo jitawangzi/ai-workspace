@@ -38,6 +38,8 @@ mvn -B '-DskipTests' test-compile
 | `workspace-script-tests` | test | 临时 Git 仓库同步行为与真实 Java classpath 加载回归 |
 | `workspace-contract` | test | 目录、文档链接、旧知识覆盖、项目适配和安装投影一致性，5 分钟 |
 | `sop-tests` | test | 自动发现引擎全部测试套件，60 分钟 |
+| `state-integrity` | test | game 模块保存快照、保存顺序、风险恢复和支付幂等四组现有测试；逐方法检查目标清单，不证明真实数据库或崩溃恢复 |
+| `runtime-evidence-tests` | test | 运行身份采集器的本机 HTTP 夹具与失败判定；不连接游戏服 |
 
 Java Profile 通过 `scripts/run-java-tests.ps1` 运行 `test-compile` 和明确版本的 Surefire 3.5.2，避免本机 Maven 默认 Surefire 2.12.4 不执行 JUnit 5；检查本轮新生成的 XML，零执行、全跳过或失败都不能通过。定向测试可使用同一脚本的 `-Project` / `-Test`，按 Task Run 记录。JUnit 5 提供器依据见 [Surefire 官方说明](https://maven.apache.org/surefire-archives/surefire-3.5.5/maven-surefire-plugin/examples/junit-platform.html)。
 
