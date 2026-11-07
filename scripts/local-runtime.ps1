@@ -50,10 +50,63 @@ function StartJava([string[]]$JavaArguments,[string]$Name) {
 }
 function OwnedProcess($Record) {
     $p=Get-Process -Id $Record.pid -ErrorAction SilentlyContinue
+    if(-not $p){return $null}
+    try {
+    # 先持有内核句柄，后续StartTime、Kill和等待不重新绑定到复用的PID。
+    $null=$p.Handle
     $details=Get-CimInstance Win32_Process -Filter "ProcessId=$($Record.pid)" -ErrorAction SilentlyContinue
     if ($p -and $details -and $p.StartTime.ToUniversalTime().ToString('o') -ceq $Record.startedAt -and
-        $details.CommandLine.Contains('-Druntime.launchId='+$Record.runId) -and $details.CommandLine.Contains($Record.main)) { return $p }
+        (MatchesLaunch $details.CommandLine $Record.runId $Record.main)) { return $p }
+    $p.Dispose()
     return $null
+    } catch {$p.Dispose();throw}
+}
+function MatchesLaunch([string]$CommandLine,[string]$RunId,[string]$Main) {
+    if(-not $CommandLine){return $false}
+    $tokens=@(ConvertFrom-NativeCommandLine $CommandLine);$launches=@()
+    for($i=1;$i -lt $tokens.Count;$i++){
+        $token=$tokens[$i]
+        if($token -in @('-cp','-classpath','--class-path')){$i++;continue}
+        if($token.StartsWith('-Druntime.launchId=')){$launches+=,$token;continue}
+        if($token.StartsWith('-D') -or $token.StartsWith('-X') -or $token.StartsWith('--add-opens=')){continue}
+        # 首个非支持JVM选项必须是实际主类；后面的业务参数不参与身份。
+        return $token -ceq $Main -and $launches.Count -eq 1 -and $launches[0] -ceq ('-Druntime.launchId='+$RunId)
+    }
+    return $false
+}
+function ProcessStillExists([int]$ProcessId) {
+    $current=Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if(-not $current){return $false}
+    try{return -not $current.HasExited}
+    catch {Write-Warning ('LOCAL_RUNTIME_LIVENESS_UNKNOWN:'+ $ProcessId+':'+$_);return $true}
+    finally{$current.Dispose()}
+}
+# 意图先于启动落盘，覆盖创建进程后尚未来得及记录PID就退出的窗口。
+function RecoverLaunchRecords($Intent,$Settings,$Failures) {
+    if ($Intent.schemaVersion -cne '1.0' -or $Intent.runId -cne $Settings.runId -or $Intent.runId -notmatch '^[A-Za-z0-9_-]+$') { throw 'LOCAL_RUNTIME_INTENT_INVALID' }
+    try {$candidates=@(Get-CimInstance Win32_Process -Filter "Name='java.exe'" -ErrorAction Stop)}
+    catch {Write-Warning ('LOCAL_RUNTIME_DISCOVERY_FAILED:'+$_);$Failures.Add('DISCOVERY_FAILED');return}
+    foreach ($app in @('login','game')) {
+        $main=if($app -eq 'game'){'cn.game.games.net.game.GameServer'}else{'cn.game.login.LoginServer'}
+        foreach ($candidate in $candidates) {
+            if (MatchesLaunch $candidate.CommandLine $Intent.runId $main) {
+                $p=$null
+                try {
+                $p=Get-Process -Id $candidate.ProcessId -ErrorAction SilentlyContinue
+                if ($p) {
+                    $null=$p.Handle
+                    $record=@{app=$app;pid=$p.Id;startedAt=$p.StartTime.ToUniversalTime().ToString('o');main=$main;runId=$Intent.runId}
+                    $verified=OwnedProcess $record
+                    if($verified){$verified.Dispose();$record}
+                    elseif(ProcessStillExists $candidate.ProcessId){$Failures.Add('CANDIDATE_IDENTITY_CHANGED:'+ $candidate.ProcessId)}
+                }
+                } catch {
+                    Write-Warning ('LOCAL_RUNTIME_CANDIDATE_UNAVAILABLE:'+ $candidate.ProcessId+':'+$_)
+                    if(ProcessStillExists $candidate.ProcessId){$Failures.Add('CANDIDATE_UNAVAILABLE:'+ $candidate.ProcessId)}
+                } finally {if($p){$p.Dispose()}}
+            }
+        }
+    }
 }
 if ($Action -eq 'Prepare') {
     if ($ApolloUri.Scheme -ne 'http' -or -not $ApolloUri.IsLoopback -or $ApolloUri.UserInfo -or $ApolloUri.Query) { throw 'LOCAL_APOLLO_URI_REQUIRED' }
@@ -100,9 +153,10 @@ $lifecycleLock=Enter-RuntimeSnapshotLock $Snapshot
 try {
 $settings=Get-Content -LiteralPath (Join-Path $Snapshot 'settings.json') -Raw|ConvertFrom-Json
 $statePath=Join-Path $Snapshot 'processes.json'
+$intentPath=Join-Path $Snapshot 'launch-intent.json'
 if ($Action -eq 'Start') {
     if (-not $ConfirmDataScope) { throw 'LOCAL_RUNTIME_DATA_SCOPE_REQUIRED: Game startup runs existing migrations; confirm this snapshot uses the intended test storage' }
-    if (Test-Path -LiteralPath $statePath) { throw 'LOCAL_RUNTIME_ALREADY_STARTED: inspect Status; prepare a new snapshot for another run' }
+    if ((Test-Path -LiteralPath $statePath) -or (Test-Path -LiteralPath $intentPath)) { throw 'LOCAL_RUNTIME_ALREADY_STARTED: inspect Status; prepare a new snapshot for another run' }
     # 外部预检仅用于提前诊断；两个业务 JVM 仍须在存储初始化前核对自己的固定配置。
     foreach ($app in @('game','login')) {
         $argsList=RuntimeArgs $settings $app
@@ -116,6 +170,8 @@ if ($Action -eq 'Start') {
         foreach ($key in $expected.Keys) { if ($actual[$key] -cne $expected[$key]) { throw "LOCAL_RUNTIME_PREFLIGHT_DRIFT:$app/$key" } }
     }
     $records=@()
+    # 使用已有原子写和Flush(true)；持久意图失败时绝不创建业务进程。
+    Write-RuntimeProcessState $intentPath @(@{schemaVersion='1.0';runId=$settings.runId})
     try {
     foreach ($app in @('login','game')) {
         $arguments=RuntimeArgs $settings $app
@@ -131,7 +187,7 @@ if ($Action -eq 'Start') {
     $deadline=[DateTimeOffset]::UtcNow.AddSeconds(180)
     $ready=$false
     while ([DateTimeOffset]::UtcNow -lt $deadline) {
-        foreach ($record in $records) { if (-not (OwnedProcess $record)) { throw "LOCAL_RUNTIME_EARLY_EXIT:$($record.app)" } }
+        foreach ($record in $records) { $running=OwnedProcess $record; if (-not $running) { throw "LOCAL_RUNTIME_EARLY_EXIT:$($record.app)" };$running.Dispose() }
         try {
             $null=Get-RuntimeIdentityObservation -ExpectedPath (Join-Path $Snapshot 'expected-runtime.json') -IdentityUri "http://127.0.0.1:$($settings.identityPort)/runtime-identity" -TimeoutSeconds 30
             $gameProcess=@($records|Where-Object app -eq 'game')[0]
@@ -146,9 +202,9 @@ if ($Action -eq 'Start') {
         foreach ($record in $records) {
             try {
                 $p=OwnedProcess $record
-                if ($p) { Stop-Process -Id $p.Id; Wait-Process -Id $p.Id -Timeout 10 -ErrorAction SilentlyContinue }
+                if ($p) { try {Stop-Process -InputObject $p; if(-not $p.WaitForExit(10000)){throw 'LOCAL_RUNTIME_PROCESS_EXIT_TIMEOUT'}} finally {$p.Dispose()} }
             } catch {
-                # 一条清理失败不能跳过后续进程；登记失败时也保留内存中的身份供恢复。
+                # 一条失败不跳过后续进程；持久启动意图供另一执行者重新发现未登记进程。
                 Write-Warning ('LOCAL_RUNTIME_PARTIAL_CLEANUP_FAILED:'+($record|ConvertTo-Json -Compress)+':'+$_.Exception.Message)
             }
         }
@@ -157,18 +213,30 @@ if ($Action -eq 'Start') {
     Write-Output "LOCAL_RUNTIME_STARTED:$Snapshot"
     exit 0
 }
-if (-not (Test-Path -LiteralPath $statePath)) { Write-Output 'LOCAL_RUNTIME_NOT_STARTED'; exit 0 }
-$storedRecords=ConvertFrom-RuntimeJson (Get-Content -LiteralPath $statePath -Raw)
-$stopFailures=@()
+if (-not (Test-Path -LiteralPath $statePath) -and -not (Test-Path -LiteralPath $intentPath)) { Write-Output 'LOCAL_RUNTIME_NOT_STARTED'; exit 0 }
+$storedRecords=@()
+$recoveryFailures=[Collections.Generic.List[string]]::new()
+if(Test-Path -LiteralPath $statePath){$storedRecords=ConvertFrom-RuntimeJson (Get-Content -LiteralPath $statePath -Raw)}
+if(Test-Path -LiteralPath $intentPath){
+    $intent=ConvertFrom-RuntimeJson (Get-Content -LiteralPath $intentPath -Raw)
+    if($intent.Count -ne 1){throw 'LOCAL_RUNTIME_INTENT_INVALID'}
+    $storedRecords+=@(RecoverLaunchRecords $intent[0] $settings $recoveryFailures)
+}
+$storedRecords=@($storedRecords | Sort-Object -Property pid,startedAt -Unique)
+$stopFailures=@($recoveryFailures.ToArray())
 foreach ($record in $storedRecords) {
+    $owned=$null;$process=$null
+    try {
     $process=Get-Process -Id $record.pid -ErrorAction SilentlyContinue
     $owned=OwnedProcess $record
     if ($Action -eq 'Stop' -and $owned) {
-        try { Stop-Process -Id $record.pid; Write-Output "LOCAL_RUNTIME_STOPPED:$($record.app)" }
+        try { Stop-Process -InputObject $owned; if(-not $owned.WaitForExit(10000)){throw 'LOCAL_RUNTIME_PROCESS_EXIT_TIMEOUT'}; Write-Output "LOCAL_RUNTIME_STOPPED:$($record.app)" }
         catch { $stopFailures+='STOP_FAILED:'+ $record.app }
     }
     elseif ($Action -eq 'Status') { [ordered]@{app=$record.app;pid=$record.pid;ownedRunning=[bool]$owned}|ConvertTo-Json -Compress }
-    elseif ($process) { $stopFailures+='PROCESS_IDENTITY_CHANGED:'+ $record.app }
+    elseif ($process -and (ProcessStillExists $record.pid)) { $stopFailures+='PROCESS_IDENTITY_CHANGED:'+ $record.app }
+    } catch {Write-Warning ('LOCAL_RUNTIME_PROCESS_CHECK_FAILED:'+ $record.pid+':'+$_);if(ProcessStillExists $record.pid){$stopFailures+='PROCESS_CHECK_FAILED:'+ $record.app}}
+    finally {if($owned){$owned.Dispose()};if($process){$process.Dispose()}}
 }
 if ($stopFailures.Count) { throw ('LOCAL_RUNTIME_STOP_INCOMPLETE:'+($stopFailures -join ';')) }
 } finally { $lifecycleLock.Dispose() }

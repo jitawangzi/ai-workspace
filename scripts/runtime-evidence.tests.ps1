@@ -145,9 +145,9 @@ function global:Invoke-WebRequest {
         @'
 param($StopScript,$Snapshot)
 $ErrorActionPreference='Stop';$global:stopped=@()
-function global:Get-Process { param([int]$Id) [pscustomobject]@{Id=$Id;StartTime=[DateTime]::Parse('2026-01-01T00:00:00Z',[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind)} }
-function global:Get-CimInstance { param($ClassName,$Filter) [pscustomobject]@{CommandLine=$(if($Filter -eq 'ProcessId=111'){'unrelated.Main'}else{'-Druntime.launchId=fixture game.Main'})} }
-function global:Stop-Process { param([int]$Id) $global:stopped+=$Id }
+function global:Get-Process { param([int]$Id) $p=[pscustomobject]@{Id=$Id;Handle=1;StartTime=[DateTime]::Parse('2026-01-01T00:00:00Z',[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind)};$p|Add-Member -MemberType ScriptMethod -Name Dispose -Value {};$p|Add-Member -MemberType ScriptMethod -Name WaitForExit -Value {param($Timeout) return $true};$p }
+function global:Get-CimInstance { param($ClassName,$Filter) [pscustomobject]@{CommandLine=$(if($Filter -eq 'ProcessId=111'){'java.exe unrelated.Main'}else{'java.exe -Druntime.launchId=fixture game.Main'})} }
+function global:Stop-Process { param([int]$Id,$InputObject) if($InputObject){$Id=$InputObject.Id};$global:stopped+=$Id }
 try { & $StopScript -Action Stop -Snapshot $Snapshot; throw 'UNEXPECTED_STOP_SUCCESS' }
 catch { if($_.Exception.Message -notlike 'LOCAL_RUNTIME_STOP_INCOMPLETE:*'){throw} }
 if(($global:stopped -join ',') -cne '222'){throw 'MIXED_PROCESS_CLEANUP_REGRESSION'}

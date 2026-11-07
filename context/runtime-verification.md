@@ -58,6 +58,10 @@ HTTP 前后观察只证明接口的身份稳定。只有场景前后探针也匹
 
 ## 边界回归
 
+启动前先原子保存 `launch-intent.json` 并刷新到磁盘，保存失败则不创建业务进程。登记失败或控制进程在记录 PID 前退出时，新的 Stop/Status 执行者读取同一快照意图，按完整 launchId 和主类参数发现候选，再核对 PID、启动时间和当前命令行；相似前缀标识不能匹配。清理逐个处理，有界等待原 Process 对象退出，失败保留意图和既有登记供再次 Stop。重复 Stop 应成功，不能将已退出进程当清理失败；保留意图的快照禁止重新 Start，应另行 Prepare。
+
+`runtime-concurrency-tests` 增补“登记失败→未登记进程清理失败→原执行者退出→新执行者 Stop”和“业务进程创建后、返回 PID 前控制器退出”，并核对再次 Stop 与其他启动标识的进程不受影响。控制器是真实独立 pwsh，业务进程由持久状态夹具替代，不连接数据库；本测试不宣称完成真实 Game/Login 故障注入。
+
 "runtime-identity-java" 包含独立 JVM 的真实 Apollo SPI、普通模式兼容和 XML 修改→加载→恢复→首次检查；"runtime-concurrency-tests" 用独立 pwsh 进程及受控业务夹具覆盖排他锁、失败调用清理归属、原子写失败和锁持有者退出。"scripts/runtime-startup-boundary.tests.ps1 -Snapshot <新快照>" 实际运行两个业务入口，将独立期望生成后的有效存储配置覆盖到本机陷阱端口，核对拒绝原因与零连接，并验证缺失/损坏期望；它不修改共享 Apollo。单测/陷阱测试与完整真实场景分别记录，不能相互替代。
 
 严格配置支持当前启动链使用的标准 XML 配置入口：全部 springArgs 文件均验证（包括名为 log4j2.xml 的文件）；带命名空间的 location/locations 及引用写法也拒绝。直接声明的 PropertiesLoaderSupport / YamlProcessor 属性加载器及子类、无法解析的 Bean 类型、factory-method/factory-bean 间接创建方式在严格模式下不支持。此规则不等于审计任意自定义 Bean 或扫描后 Java 代码。
