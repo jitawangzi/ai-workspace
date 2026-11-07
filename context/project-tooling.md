@@ -28,6 +28,12 @@ mvn -B '-DskipTests' test-compile
 
 [verification-commands.json](verification-commands.json) 提供以下 Profile，均从项目根执行。
 
+每个入口的环境、资源写入、隔离清理、失败材料与结论范围见 [验证副作用说明](verification-effects.md)。说明用于选择已有入口，不增加审批；已有明确授权持续有效。
+
+跨任务发现存放在规格仓 `features/<Feature>/findings/<编号>.json`。修改前按实际范围检查未关闭发现；关闭须关联修复提交、真实回归与适用审核依据。`RUNTIME-ORPHAN-001` 已关闭，`BUILD-GENERATION-001` 仍开放，当前任务 PASS 不改变其他发现状态。通用规则见 `.ai-sop/docs/REVIEW_AND_FINDINGS.md`。
+
+需要审查材料时，从宿主根执行 `.ai-sop/scripts/export-review.ps1 -WorkspacePath . -Feature <实际功能> -TaskId <实际任务> -CheckCurrent -Scope <受影响路径>`。多仓增加 RepositoryPaths（本项目还包括 protocol）。输出是派生导航，不是第二份权威状态；缺报告、缺基线和未知清理必须保留缺口，摘要一致不代表业务正确。只读入口不隐式运行构建或测试。
+
 | Profile | 类型 | 实际范围 |
 |---|---|---|
 | `compile` | compile | Maven 生产编译，30 分钟 |
@@ -74,7 +80,7 @@ pwsh -NoProfile -File ./ai-sop.ps1 Task -Operation Run -Feature <Feature> -TaskI
 
 ## Git 归属与同步
 
-- 宿主根：`server.git`，保存 Java 工程和 SOP 安装入口；本次只安装本地，不提交或推送宿主源码及其已有改动。
+- 宿主根：`server.git`，保存 Java 工程和 SOP 安装入口；按当前任务与用户授权提交相关改动，保留其他已有改动。历史迁移任务的“只安装本地”不限制后续已授权交付。
 - `.ai-sop/`：通用引擎子模块，版本由 `tools/ai-sop/ai-sop.lock.json` 锁定；不得在投影副本里修改通用规则。
 - `.ai-workspace/`：个人项目独立 `ai-workspace.git`；与 aircraft 本地工作树完全分离。该远端专供本次个人项目；其他工作区旧的同名远端由用户另行调整，禁止直接把其项目分支合并进来。
 - `.ai-workspace/specs/`：按 [工作区 README](../README.md) 中登记的独立归属同步；外层忽略整个 specs，不把它当普通目录打包提交。
@@ -83,7 +89,7 @@ pwsh -NoProfile -File ./ai-sop.ps1 Task -Operation Run -Feature <Feature> -TaskI
 
 工作区与 specs 各自提供 `commit.cmd` / `pull.cmd`：前者只提交已手动暂存的内容再 push，不执行 `git add .`；后者要求工作树干净并只允许 fast-forward。脚本固定在所在仓库运行，不注入本机代理，不递归同步嵌套仓库。示例：先在目标仓库 `git add -- <本任务文件>`，检查 `git diff --cached`，再 `./commit.cmd -Message "说明"`；拉取执行 `./pull.cmd`。
 
-宿主根的 `.git/info/exclude` 已本地忽略 `.ai-workspace/`、`.claude_old/` 和运行目录；无需为了它们再改共享 `.gitignore`。`.ai-sop` 子模块、锁及生成入口是可复现安装资产，不能一律忽略。旧 `.claude` 删除/替换和已有业务改动继续保留在宿主工作树，待用户整理提交；本轮仅提交两个嵌套知识仓库及引擎真源，不替用户提交宿主根。
+宿主根的 `.git/info/exclude` 已本地忽略 `.ai-workspace/`、`.claude_old/` 和运行目录；无需为了它们再改共享 `.gitignore`。`.ai-sop` 子模块、锁及生成入口是可复现安装资产，不能一律忽略。提交范围以当前任务及实际 diff 为准；历史迁移说明不代表当前工作树状态，不把其他任务的改动并入本次提交。用户已明确授权的仓库和目标分支可直接推送，无需重复确认。
 
 共享 specs 保留其他项目历史是既定安排。开始工作优先 `pwsh -NoProfile -File ./ai-sop.ps1 Task -Operation Discover -Feature SopMigration`（实际开发替换为目标功能）；查询旧记录加 `-IncludeHistory`。`LEGACY` 表示尚无任务记录，`PAUSED` / `TASK_BASELINE_REQUIRED` 不代表本项目必须恢复它们；不得因列表出现其他项目旧任务而选择接管。
 

@@ -19,6 +19,7 @@
 | Protobuf 定义及兼容 | [proto-rules.md](proto-rules.md) |
 | 表结构、生成类、配置来源 | [config-rules.md](config-rules.md) |
 | 测试与模拟客户端 | [client-test.md](client-test.md) |
+| 选择验证入口、环境前提、资源副作用及清理 | [verification-effects.md](verification-effects.md) |
 | 联调运行实例、制品和配置证据 | [runtime-verification.md](runtime-verification.md) |
 | 保存、幂等、失败与恢复专项验证 | [state-integrity-testing.md](state-integrity-testing.md) |
 | 实际发布、灰度、迁移或恢复演练 | [发布与恢复](../workflows/release-recovery.md) |
