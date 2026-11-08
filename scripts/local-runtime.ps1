@@ -49,12 +49,13 @@ function StartJava([string[]]$JavaArguments,[string]$Name) {
     return Start-Process -FilePath 'java' -ArgumentList $quoted -WorkingDirectory $workingDirectory -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err -PassThru
 }
 function OwnedProcess($Record) {
-    $p=Get-Process -Id $Record.pid -ErrorAction SilentlyContinue
+    $p=Get-Process -Id $Record.pid -ErrorAction Stop
     if(-not $p){return $null}
     try {
     # 先持有内核句柄，后续StartTime、Kill和等待不重新绑定到复用的PID。
     $null=$p.Handle
-    $details=Get-CimInstance Win32_Process -Filter "ProcessId=$($Record.pid)" -ErrorAction SilentlyContinue
+    $details=Get-CimInstance Win32_Process -Filter "ProcessId=$($Record.pid)" -ErrorAction Stop
+    if(-not $details -or [string]::IsNullOrWhiteSpace($details.CommandLine)){throw ('LOCAL_RUNTIME_PROCESS_IDENTITY_UNAVAILABLE:'+ $Record.pid)}
     if ($p -and $details -and $p.StartTime.ToUniversalTime().ToString('o') -ceq $Record.startedAt -and
         (MatchesLaunch $details.CommandLine $Record.runId $Record.main)) { return $p }
     $p.Dispose()
@@ -75,24 +76,37 @@ function MatchesLaunch([string]$CommandLine,[string]$RunId,[string]$Main) {
     return $false
 }
 function ProcessStillExists([int]$ProcessId) {
-    $current=Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
-    if(-not $current){return $false}
-    try{return -not $current.HasExited}
-    catch {Write-Warning ('LOCAL_RUNTIME_LIVENESS_UNKNOWN:'+ $ProcessId+':'+$_);return $true}
-    finally{$current.Dispose()}
+    $current=$null
+    try {
+        $current=Get-Process -Id $ProcessId -ErrorAction Stop
+        if(-not $current){return $false}
+        return -not $current.HasExited
+    } catch {
+        # 只有明确不存在才视为已退出，权限或读取失败必须保留待恢复状态。
+        if($_.CategoryInfo.Category -eq [Management.Automation.ErrorCategory]::ObjectNotFound){Write-Warning ('LOCAL_RUNTIME_PROCESS_EXITED:'+ $ProcessId);return $false}
+        Write-Warning ('LOCAL_RUNTIME_LIVENESS_UNKNOWN:'+ $ProcessId+':'+$_);return $true
+    }
+    finally{if($current){$current.Dispose()}}
 }
 # 意图先于启动落盘，覆盖创建进程后尚未来得及记录PID就退出的窗口。
 function RecoverLaunchRecords($Intent,$Settings,$Failures) {
     if ($Intent.schemaVersion -cne '1.0' -or $Intent.runId -cne $Settings.runId -or $Intent.runId -notmatch '^[A-Za-z0-9_-]+$') { throw 'LOCAL_RUNTIME_INTENT_INVALID' }
     try {$candidates=@(Get-CimInstance Win32_Process -Filter "Name='java.exe'" -ErrorAction Stop)}
     catch {Write-Warning ('LOCAL_RUNTIME_DISCOVERY_FAILED:'+$_);$Failures.Add('DISCOVERY_FAILED');return}
+    $readable=[Collections.Generic.List[object]]::new()
+    foreach($candidate in $candidates){
+        if([string]::IsNullOrWhiteSpace($candidate.CommandLine)){
+            # 无法排除本轮尚未登记的进程；仅报告未知，不凭名称或PID授权终止。
+            if(ProcessStillExists $candidate.ProcessId){$Failures.Add('CANDIDATE_IDENTITY_UNKNOWN:'+ $candidate.ProcessId)}
+        }else{$readable.Add($candidate)}
+    }
     foreach ($app in @('login','game')) {
         $main=if($app -eq 'game'){'cn.game.games.net.game.GameServer'}else{'cn.game.login.LoginServer'}
-        foreach ($candidate in $candidates) {
+        foreach ($candidate in $readable) {
             if (MatchesLaunch $candidate.CommandLine $Intent.runId $main) {
                 $p=$null
                 try {
-                $p=Get-Process -Id $candidate.ProcessId -ErrorAction SilentlyContinue
+                $p=Get-Process -Id $candidate.ProcessId -ErrorAction Stop
                 if ($p) {
                     $null=$p.Handle
                     $record=@{app=$app;pid=$p.Id;startedAt=$p.StartTime.ToUniversalTime().ToString('o');main=$main;runId=$Intent.runId}
@@ -227,7 +241,7 @@ $stopFailures=@($recoveryFailures.ToArray())
 foreach ($record in $storedRecords) {
     $owned=$null;$process=$null
     try {
-    $process=Get-Process -Id $record.pid -ErrorAction SilentlyContinue
+    $process=Get-Process -Id $record.pid -ErrorAction Stop
     $owned=OwnedProcess $record
     if ($Action -eq 'Stop' -and $owned) {
         try { Stop-Process -InputObject $owned; if(-not $owned.WaitForExit(10000)){throw 'LOCAL_RUNTIME_PROCESS_EXIT_TIMEOUT'}; Write-Output "LOCAL_RUNTIME_STOPPED:$($record.app)" }

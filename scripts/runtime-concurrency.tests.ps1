@@ -60,6 +60,11 @@ function global:Start-Process {
 }
 function global:Get-Process {
     param([int]$Id)
+    if($Id -eq 400001 -and $Mode -in @('stopemptydenied','stopquerydenied')){throw [UnauthorizedAccessException]::new('fixture process query denied')}
+    if($Id -eq 400001 -and $Mode -eq 'stopquerygone'){
+        Remove-Item -LiteralPath (Join-Path $Snapshot "alive-$Id") -ErrorAction SilentlyContinue
+        throw [Management.Automation.ErrorRecord]::new([ArgumentException]::new('fixture process exited'),'NoProcessFoundForGivenId',[Management.Automation.ErrorCategory]::ObjectNotFound,$Id)
+    }
     if(Test-Path -LiteralPath (Join-Path $Snapshot "alive-$Id")){
         $p=[pscustomobject]@{Id=$Id;Handle=1;StartTime=[DateTime]::Parse('2026-01-01T00:00:00Z',[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind)}
         $p|Add-Member -MemberType ScriptMethod -Name Dispose -Value {}
@@ -73,6 +78,7 @@ function global:Get-Process {
 }
 function global:Get-CimInstance {
     param($ClassName,$Filter)
+    if($Mode -eq 'statuscimdenied' -and $Filter -eq 'ProcessId=400001'){throw [UnauthorizedAccessException]::new('fixture command line query denied')}
     foreach($id in @(400001,400002,400003,400004,400005)){
         if($Filter -like 'ProcessId=*' -and $Filter -ne "ProcessId=$id"){continue}
         if(Test-Path -LiteralPath (Join-Path $Snapshot "alive-$id")){
@@ -81,6 +87,10 @@ function global:Get-CimInstance {
             $command="java.exe -Druntime.launchId=$launch $main"
             if($id -eq 400004){$command='java.exe "-Dnote=prefix -Druntime.launchId=fixture cn.game.login.LoginServer suffix" example.Unrelated'}
             if($id -eq 400005){$command='java.exe -Druntime.launchId=fixture example.Unrelated cn.game.games.net.game.GameServer'}
+            if($id -eq 400001 -and $Mode -in @('stopempty','stopemptygone','stopemptydenied','statusunknown')){$command=$null}
+            if($id -eq 400001 -and $Mode -in @('stopblank','statusblank')){$command='  '}
+            if($id -eq 400001 -and $Mode -eq 'stopemptygone'){Remove-Item -LiteralPath (Join-Path $Snapshot "alive-$id")}
+            if($id -eq 400003 -and $Mode -eq 'stopforeignunknown'){$command=$null}
             [pscustomobject]@{ProcessId=$id;CommandLine=$command}
         }
     }
@@ -105,9 +115,9 @@ function global:Invoke-WebRequest {
 try {
     if($Mode -eq 'loser') {
         & (Join-Path $ScriptRoot check-local-runtime.ps1) -Snapshot $Snapshot -LoginUrl http://127.0.0.1:9390 -ConfirmDataScope
-    } elseif($Mode -in @('stop','stopvanished','stopunreadable')) {
+    } elseif($Mode -in @('stop','stopvanished','stopunreadable','stopempty','stopblank','stopemptygone','stopemptydenied','stopquerydenied','stopquerygone','stopforeignunknown')) {
         & (Join-Path $ScriptRoot local-runtime.ps1) -Action Stop -Snapshot $Snapshot
-    } elseif($Mode -eq 'status') {
+    } elseif($Mode -in @('status','statusunknown','statusblank','statuscimdenied')) {
         & (Join-Path $ScriptRoot local-runtime.ps1) -Action Status -Snapshot $Snapshot
     } elseif($Mode -eq 'lockowner') {
         . (Join-Path $ScriptRoot runtime-state.ps1)
@@ -182,12 +192,55 @@ try {
         if(Test-Path -LiteralPath (Join-Path $recover alive-400002)){throw 'CANDIDATE_FAILURE_SKIPPED_OTHER_PROCESS'}
         Finish (Launch stop $recover) $true
     }}
+    # 从未登记的启动意图恢复：身份不可读、存活查询失败、退出竞态及再次执行。
+    foreach($mode in @('stopempty','stopblank','stopemptygone','stopemptydenied','stopquerydenied','stopquerygone','stopforeignunknown','statusunknown')){
+        $recover=Join-Path $fixture ('discovery-'+$mode);[IO.Directory]::CreateDirectory($recover)|Out-Null
+        foreach($file in @('settings.json','launch-intent.json')){Copy-Item -LiteralPath (Join-Path (Join-Path $fixture crashbeforepid) $file) -Destination (Join-Path $recover $file)}
+        $intentHash=(Get-FileHash (Join-Path $recover launch-intent.json)).Hash
+        foreach($id in @(400001,400002,400003)){''|Set-Content -LiteralPath (Join-Path $recover "alive-$id")}
+        $gone=$mode -in @('stopemptygone','stopquerygone')
+        Finish (Launch $mode $recover) $gone
+        if((Get-FileHash (Join-Path $recover launch-intent.json)).Hash -ne $intentHash){throw 'UNKNOWN_IDENTITY_CHANGED_RECOVERY_INTENT'}
+        if(-not(Test-Path -LiteralPath (Join-Path $recover alive-400003))){throw 'UNKNOWN_OR_FOREIGN_PROCESS_STOPPED'}
+        if($mode -eq 'statusunknown'){
+            if(Test-Path -LiteralPath (Join-Path $recover stopped)){throw 'STATUS_STOPPED_PROCESS'}
+        }elseif(Test-Path -LiteralPath (Join-Path $recover alive-400002)){throw 'UNKNOWN_CANDIDATE_SKIPPED_KNOWN_PROCESS'}
+        if(-not $gone){
+            $errorText=Get-Content -LiteralPath (Join-Path $fixture ($mode+'.err')) -Raw
+            if($errorText -notmatch 'LOCAL_RUNTIME_STOP_INCOMPLETE'){throw 'UNKNOWN_DISCOVERY_FALSE_SUCCESS'}
+            if($mode -ne 'stopquerydenied' -and $errorText -notmatch 'CANDIDATE_IDENTITY_UNKNOWN'){throw 'UNKNOWN_IDENTITY_NOT_REPORTED'}
+            if($mode -ne 'stopforeignunknown' -and -not(Test-Path -LiteralPath (Join-Path $recover alive-400001))){throw 'UNVERIFIED_PROCESS_STOPPED'}
+        }
+        Finish (Launch stop $recover) $true
+        foreach($id in @(400001,400002)){if(Test-Path -LiteralPath (Join-Path $recover "alive-$id")){throw 'RECOVERED_IDENTITY_PROCESS_LEFT_RUNNING'}}
+        if(-not(Test-Path -LiteralPath (Join-Path $recover alive-400003))){throw 'RECOVERY_STOPPED_FOREIGN_PROCESS'}
+        Finish (Launch stop $recover) $true
+    }
+    # 只有旧登记文件时，Stop与Status都必须区分身份未知和已确认不匹配。
+    foreach($mode in @('stopquerydenied','statusunknown','statusblank','statuscimdenied')){
+    $recover=Join-Path $fixture ('registered-query-'+$mode);[IO.Directory]::CreateDirectory($recover)|Out-Null
+    foreach($file in @('settings.json','processes.json')){Copy-Item -LiteralPath (Join-Path (Join-Path $fixture 'registered-stopunreadable') $file) -Destination (Join-Path $recover $file)}
+    $stateHash=(Get-FileHash (Join-Path $recover processes.json)).Hash
+    foreach($id in @(400001,400002)){''|Set-Content -LiteralPath (Join-Path $recover "alive-$id")}
+    Finish (Launch $mode $recover) $false
+    if(-not(Test-Path -LiteralPath (Join-Path $recover alive-400001))){throw 'REGISTERED_UNKNOWN_PROCESS_STOPPED'}
+    if($mode -eq 'stopquerydenied'){
+        if(Test-Path -LiteralPath (Join-Path $recover alive-400002)){throw 'REGISTERED_UNKNOWN_SKIPPED_KNOWN_PROCESS'}
+    }else{
+        if(Test-Path -LiteralPath (Join-Path $recover stopped)){throw 'REGISTERED_STATUS_STOPPED_PROCESS'}
+        if((Get-Content -LiteralPath (Join-Path $fixture ($mode+'.err')) -Raw) -notmatch 'LOCAL_RUNTIME_STOP_INCOMPLETE'){throw 'REGISTERED_STATUS_UNKNOWN_FALSE_SUCCESS'}
+        if((Get-Content -LiteralPath (Join-Path $fixture ($mode+'.out')) -Raw) -notmatch '"pid":400002'){throw 'REGISTERED_STATUS_SKIPPED_KNOWN_PROCESS'}
+    }
+    if((Get-FileHash (Join-Path $recover processes.json)).Hash -ne $stateHash){throw 'REGISTERED_UNKNOWN_STATE_CHANGED'}
+    Finish (Launch stop $recover) $true
+    Finish (Launch stop $recover) $true
+    }
     $lockTarget=Join-Path $fixture lockexit
     $owner=Launch lockowner $lockTarget;Wait-File (Join-Path $lockTarget lockentered)
     $owner.Kill();$owner.WaitForExit()
     $lock=Enter-RuntimeSnapshotLock $lockTarget;$lock.Dispose()
     if (-not (Test-Path -LiteralPath (Join-Path $lockTarget lifecycle.lock))) { throw 'LOCK_FILE_DELETED' }
-    Write-Output 'PASS: concurrency, cleanup failure, controller crash before PID registration, new-executor Stop, repeated Stop, argv isolation, intent write failure and registered/unregistered identity races (14 checks)'
+    Write-Output 'PASS: lifecycle concurrency and recovery; empty/blank/denied identity, vanished candidates, registered query denial, unknown foreign process, read-only Status and repeated Stop'
     $passed=$true
 } finally {
     foreach($child in $children) { if (-not $child.HasExited) { $child.Kill();$child.WaitForExit() } }

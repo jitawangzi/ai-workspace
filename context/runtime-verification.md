@@ -62,6 +62,8 @@ HTTP 前后观察只证明接口的身份稳定。只有场景前后探针也匹
 
 `runtime-concurrency-tests` 增补“登记失败→未登记进程清理失败→原执行者退出→新执行者 Stop”和“业务进程创建后、返回 PID 前控制器退出”，并核对再次 Stop 与其他启动标识的进程不受影响。控制器是真实独立 pwsh，业务进程由持久状态夹具替代，不连接数据库；本测试不宣称完成真实 Game/Login 故障注入。
 
+发现 java.exe 候选但命令行为空或空白时，无法排除它是尚未登记的本轮进程。Stop/Status 在候选仍存活或存活查询失败时报告 `LOCAL_RUNTIME_STOP_INCOMPLETE` / `CANDIDATE_IDENTITY_UNKNOWN`；明确不存在的候选不阻塞。查询进程被拒绝同样不能算退出。未知身份不会授权终止，其他可核验的本轮进程仍继续处理，启动意图及既有登记保留；恢复读取权限后用同一快照再次 Stop。不可读候选也可能属于其他任务，因此此时宁可报告发现不完整，不能仅凭 java.exe 名称停止。回归覆盖空/空白、查询拒绝、枚举后消失、只有旧登记记录、新执行者重试及未知外部进程不被误杀；这些为受控夹具，未模拟真实操作系统权限切换。
+
 "runtime-identity-java" 包含独立 JVM 的真实 Apollo SPI、普通模式兼容和 XML 修改→加载→恢复→首次检查；"runtime-concurrency-tests" 用独立 pwsh 进程及受控业务夹具覆盖排他锁、失败调用清理归属、原子写失败和锁持有者退出。"scripts/runtime-startup-boundary.tests.ps1 -Snapshot <新快照>" 实际运行两个业务入口，将独立期望生成后的有效存储配置覆盖到本机陷阱端口，核对拒绝原因与零连接，并验证缺失/损坏期望；它不修改共享 Apollo。单测/陷阱测试与完整真实场景分别记录，不能相互替代。
 
 严格配置支持当前启动链使用的标准 XML 配置入口：全部 springArgs 文件均验证（包括名为 log4j2.xml 的文件）；带命名空间的 location/locations 及引用写法也拒绝。直接声明的 PropertiesLoaderSupport / YamlProcessor 属性加载器及子类、无法解析的 Bean 类型、factory-method/factory-bean 间接创建方式在严格模式下不支持。此规则不等于审计任意自定义 Bean 或扫描后 Java 代码。
