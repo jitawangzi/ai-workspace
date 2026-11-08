@@ -17,4 +17,6 @@
 
 进程、事务、锁和外部资源修改按实际调用链检查补救再次失败、控制器退出、换执行者恢复。优先检查最终不变量：资源未遗漏、未误处理其他归属、未知状态可追踪、重复恢复安全；不用所有失败排列组合扩展任务。
 
-干净构建需执行研发手册第3.9、4.3节的完整流程：协议自举、原始配置全量生成及复制，再做Maven构建。生成器静态依赖修复后，固定源码提交与258份配置/工具输入快照已通过六模块干净打包，见规格仓 `features/ServerArchitectureAndAgentReadiness/tasks/clean-build-doc-retry/acceptance.md`。原失败保留为历史证据，发现状态以 findings 为准；已有本机生成文件仍不能替代交付完整性验证。独立DataChecker入口可能在检查通过后因线程池未关闭而驻留，见 `CONFIG-CHECKER-EXIT-001`；完整App入口已有收尾，本轮补充检查使用单独包装正常退出，未修改部署工具。
+干净构建需执行研发手册第3.9、4.3节的完整流程：协议自举、原始配置全量生成及复制，再做Maven构建。生成器静态依赖修复后，固定源码提交与258份配置/工具输入快照已通过六模块干净打包，见规格仓 `features/ServerArchitectureAndAgentReadiness/tasks/clean-build-doc-retry/acceptance.md`。原失败保留为历史证据，发现状态以 findings 为准；已有本机生成文件仍不能替代交付完整性验证。独立DataChecker旧包存在检查通过后线程池驻留问题；后续源码修复及部署验收见 `features/ServerArchitectureAndAgentReadiness/tasks/datachecker-process-exit/acceptance.md`，状态以 `CONFIG-CHECKER-EXIT-001` 为准，不沿用旧临时包装作为已修复依据。
+
+生成器源码仓 `dic_generate/tests/process-exit.tests.ps1` 是按需退出回归入口：需 Windows、PowerShell 7、Java 11+、已构建 Gen.jar/匹配依赖及原始配置。它复制原始 Excel 到新的隔离目录，分别验证正常、规则失败、读取异常、完整 App；配置变更和生成的 Java/XML/TS 均在副本，生成器另写 `C:/java_temp/exit_<guid>` 独占缓存。启动前 cases.json 保存各用例缓存分支及路径，results.json 汇总存在状态；缓存、全部副本、日志和摘要保留以便排查。超时结束自有测试进程并判失败；不启动游戏服务或访问业务存储。自然退出及错误断言通过不等于业务配置语义完整正确；check.bat 的 pause 也不是 JVM 驻留。
