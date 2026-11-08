@@ -30,7 +30,7 @@ mvn -B '-DskipTests' test-compile
 
 每个入口的环境、资源写入、隔离清理、失败材料与结论范围见 [验证副作用说明](verification-effects.md)。说明用于选择已有入口，不增加审批；已有明确授权持续有效。
 
-跨任务发现存放在规格仓 `features/<Feature>/findings/<编号>.json`。修改前按实际范围检查未关闭发现；关闭须关联修复提交、真实回归与适用审核依据。`RUNTIME-ORPHAN-001` 已关闭，`BUILD-GENERATION-001` 仍开放，当前任务 PASS 不改变其他发现状态。通用规则见 `.ai-sop/docs/REVIEW_AND_FINDINGS.md`。
+跨任务发现存放在规格仓 `features/<Feature>/findings/<编号>.json`。修改前按实际范围检查未关闭发现；关闭须关联修复提交、真实回归与适用审核依据。当前状态以发现记录为准，避免将本文中的历史状态当成实时结论；当前任务 PASS 不改变其他发现状态。通用规则见 `.ai-sop/docs/REVIEW_AND_FINDINGS.md`。
 
 需要审查材料时，从宿主根执行 `.ai-sop/scripts/export-review.ps1 -WorkspacePath . -Feature <实际功能> -TaskId <实际任务> -CheckCurrent -Scope <受影响路径>`。多仓增加 RepositoryPaths（本项目还包括 protocol）。输出是派生导航，不是第二份权威状态；缺报告、缺基线和未知清理必须保留缺口，摘要一致不代表业务正确。只读入口不隐式运行构建或测试。
 
