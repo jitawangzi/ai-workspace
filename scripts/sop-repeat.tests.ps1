@@ -27,6 +27,36 @@ function Run-Case([string[]]$suites,[int]$timeout=10,[int]$rounds=1){
  return @{code=$code;items=@(Get-Content (Join-Path $runPath results.json) -Raw|ConvertFrom-Json);root=$runPath}
 }
 try {
+ # PowerShell位置与原生进程目录故意分离；另一目录的同名套件不得被执行。
+ $psBase=Join-Path $root 'caller location';$nativeBase=Join-Path $root 'native location'
+ foreach($base in @($psBase,$nativeBase)){
+  [IO.Directory]::CreateDirectory((Join-Path $base 'engine/scripts/tests'))|Out-Null
+  Copy-Item $helper (Join-Path $base 'engine/scripts/hidden-process.ps1')
+ }
+ 'Write-Output "EXPECTED_SUITE"; exit 23'|Set-Content (Join-Path $psBase 'engine/scripts/tests/location.tests.ps1')
+ 'Write-Output "WRONG_SUITE"; exit 0'|Set-Content (Join-Path $nativeBase 'engine/scripts/tests/location.tests.ps1')
+ $locationDriver=Join-Path $root location-driver.ps1
+ @'
+param($Runner,$Caller,$Native,$Logs)
+Set-Location -LiteralPath $Caller
+[Environment]::CurrentDirectory=$Native
+& $Runner -EngineRoot './engine' -LogRoot $Logs -Suites @('location') -Rounds 1 -TimeoutSeconds 10
+exit $LASTEXITCODE
+'@|Set-Content $locationDriver
+ foreach($relativeLogs in @($false,$true)){
+ $logsArgument=if($relativeLogs){'./logs'}else{Join-Path $psBase absolute-logs}
+ $locationOut=Join-Path $root "location-$relativeLogs.out";$locationErr=Join-Path $root "location-$relativeLogs.err"
+ $locationProcess=Start-AiSopHiddenProcess -FilePath (Get-Process -Id $PID).Path -ArgumentList @('-NoProfile','-File',$locationDriver,$runner,$psBase,$nativeBase,$logsArgument) -RedirectStandardOutput $locationOut -RedirectStandardError $locationErr -TimeoutSeconds 25 -PassThru
+ try{$locationProcess.WaitForExit();$locationCode=$locationProcess.ExitCode}finally{$locationProcess.Dispose()}
+ Assert ($locationCode -eq 1) 'Relative engine selected wrong suite or masked exit 23'
+ $expectedLogs=if($relativeLogs){Join-Path $psBase logs}else{$logsArgument}
+ $locationResults=@(Get-ChildItem $expectedLogs -Filter results.json -Recurse)
+ Assert ($locationResults.Count -eq 1 -and -not(Test-Path (Join-Path $nativeBase logs))) 'Relative log root used native directory'
+ $locationResult=@(Get-Content $locationResults[0].FullName -Raw|ConvertFrom-Json)[0]
+ Assert ($locationResult.exitCode -eq 23 -and $locationResult.cleanupConfirmed) 'Expected suite exit was not preserved'
+ Assert ([IO.Path]::IsPathFullyQualified($locationResult.stdout) -and [IO.Path]::IsPathFullyQualified($locationResult.stderr)) 'Result log paths are not absolute'
+ Assert ([IO.File]::ReadAllText($locationResult.stdout).Contains('EXPECTED_SUITE') -and -not [IO.File]::ReadAllText($locationResult.stdout).Contains('WRONG_SUITE')) 'Wrong source executed'
+ }
  $savedIdentity=$env:AI_SOP_INVOCATION_SESSION_ID
  try {
   $env:AI_SOP_INVOCATION_SESSION_ID='repeat-regression-identity'

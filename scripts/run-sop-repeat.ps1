@@ -9,6 +9,13 @@ param(
  [string]$LogRoot=(Join-Path (Split-Path -Parent $PSScriptRoot) '.runtime/sop-repeat')
 )
 $ErrorActionPreference='Stop'
+# 原生子进程不继承 PowerShell 的位置语义；在加载或创建任何资源前统一解析。
+foreach($name in @('EngineRoot','LogRoot')){
+ $provider=$null;$drive=$null
+ $absolute=$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath((Get-Variable $name -ValueOnly),[ref]$provider,[ref]$drive)
+ if($provider.Name -ne 'FileSystem'){throw "REPEAT_FILESYSTEM_PATH_REQUIRED:$name"}
+ Set-Variable -Name $name -Value $absolute
+}
 . (Join-Path $EngineRoot 'scripts/hidden-process.ps1')
 # 子套件自建会话，不继承宿主执行身份；脚本退出时恢复调用环境。
 $savedSession=$env:AI_SOP_INVOCATION_SESSION_ID
