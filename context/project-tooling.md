@@ -78,6 +78,16 @@ pwsh -NoProfile -File ./ai-sop.ps1 Task -Operation Run -Feature <Feature> -TaskI
 
 输入指纹在引擎默认范围之上，通过 `verification-inputs.json` 显式纳入本工作区的 README、context、schemas、scripts 和 workflows，确保迁移资料与验证脚本变动能使旧证据过期。仅额外排除宿主根 `logs/`：它由 GameSSLogger、LoggerManager 和 Log4j2 写入，已被宿主 Git 忽略，包含不符合默认 `.log` 后缀规则的实时日志。日志配置和 Java 源码仍纳入检查；没有申请执行豁免，也不补造 Start 起点。共享 specs 中的其他项目历史任务不在本次重新验收；后续接管须回到原项目兼容的策略与代码副本。
 
+## 验证效率与失败现场
+
+本地默认仍为T2，不新增审批或完成门禁。先完成定向回归、独立审核（本任务已明确要求时）和文档同步，再冻结输入运行最终完整检查。可按需运行现有 `.ai-sop/scripts/export-review.ps1 -CheckCurrent`：其 preparation 字段只是当前摘要、最新批次和收尾提示，不授权跳过测试；命令定义、用例覆盖及清理结果仍需核对。工作树差异可能包含其他任务，不能直接整仓暂存。
+
+在 Complete 前完成发现记录、审核说明和验收索引；完成状态以 task.json 为准，交付版本以各仓 Git 提交及远端为准，避免 Complete 后再次编辑重复状态说明导致补收尾任务。
+
+引擎 workflow-evidence-safety 失败会保留临时夹具、各场景输出、runner-result 和 failure.json，并尝试有界清理所属进程。主故障不掩盖补救故障；预期非零业务退出不能替代输出与清理确认。成功且清理确认才删除现场。retained-fixture 回归会故意生成失败夹具，控制台给出路径；这些是本机合成数据，不连接 Apollo、业务数据库或游戏服。保留目录不代表仍有进程运行，清理未知必须读报告，不自动删除或上传整份现场。
+
+Inputs 完整诊断提供文件数、读取量、路径解析和哈希耗时。2026-11-09 对同一宿主输入的对照为3188文件、89,358,100字节，文件摘要一致；本机单次完整诊断约4.28秒降至1.84秒，仅作为测量结果。默认Start仍有500ms/8MiB预算，超过8MiB仍准确记录UNAVAILABLE，不扩大预算或排除真实源码。需要完整起点时在修改前使用已有Start -CaptureBaseline，不用后续快照补造起点。
+
 ## Git 归属与同步
 
 - 宿主根：`server.git`，保存 Java 工程和 SOP 安装入口；按当前任务与用户授权提交相关改动，保留其他已有改动。历史迁移任务的“只安装本地”不限制后续已授权交付。
