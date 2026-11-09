@@ -86,6 +86,8 @@ pwsh -NoProfile -File ./ai-sop.ps1 Task -Operation Run -Feature <Feature> -TaskI
 
 引擎 workflow-evidence-safety 失败会保留临时夹具、各场景输出、runner-result 和 failure.json，并尝试有界清理所属进程。主故障不掩盖补救故障；预期非零业务退出不能替代输出与清理确认。成功且清理确认才删除现场。retained-fixture 回归会故意生成失败夹具，控制台给出路径；这些是本机合成数据，不连接 Apollo、业务数据库或游戏服。保留目录不代表仍有进程运行，清理未知必须读报告，不自动删除或上传整份现场。
 
+同一PowerShell安装升级后继续自检时，已编译.NET类型仍留在进程中。清理辅助实现使用版本命名空间隔离旧六/七参类型；不要以重新加载脚本代替编译类型升级。`hidden-process-upgrade`回归先加载冻结旧脚本再加载新版，覆盖升级前后句柄及异常退出，失败时独立回收测试进程。新版句柄在清理启动前失败可重试，已记录清理超时不能重复耗时；旧句柄已有ScriptMethod及此前已误置的Disposed状态不自动重写。
+
 Inputs 完整诊断提供文件数、读取量、路径解析和哈希耗时。2026-11-09 对同一宿主输入的对照为3188文件、89,358,100字节，文件摘要一致；本机单次完整诊断约4.28秒降至1.84秒，仅作为测量结果。默认Start仍有500ms/8MiB预算，超过8MiB仍准确记录UNAVAILABLE，不扩大预算或排除真实源码。需要完整起点时在修改前使用已有Start -CaptureBaseline，不用后续快照补造起点。
 
 ## Git 归属与同步
