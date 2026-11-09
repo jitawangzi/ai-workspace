@@ -30,3 +30,8 @@
 历史任务中的 `evidence/repeat*.ps1` 是缺陷版本的原始归档，不作为当前执行入口。新入口通过不代表历史锁IO、deadline和提前退出根因已定位。
 
 EngineRoot和LogRoot在入口按调用者PowerShell位置解析为绝对文件系统路径，再加载辅助脚本、创建日志及启动测试；不使用原生进程当前目录推断相对路径。双目录反例断言目标测试23不能被另一目录同名测试0替代，且相对日志留在调用目录。
+# SOP 并发故障定位补充
+
+引擎 `scripts/tests/workflow-concurrency-boundaries.tests.ps1` 仅在独立临时目录运行，启动自身 PowerShell 子进程并回收；不连接 Apollo、数据库或 Redis。覆盖锁复用与崩溃释放、冷启动操作预算、真实runner读取竞争、连续发布的完整可见性及拒绝后候选保留。成功/失败夹具均保留，空锁哨兵不作为进程存活依据，运行中不要按文件年龄删除锁。
+
+入口通过证明上述脚本机制，不证明游戏业务或所有历史事故已经逐次还原。当前调查、受控反例与原始报告见规格仓 `features/ServerArchitectureAndAgentReadiness/tasks/parallel-runner-timeout-and-root-cause/root-cause.md`；引擎的恢复材料处置见 `.ai-sop/docs/WORKFLOW_IO_BOUNDARIES.md`。
