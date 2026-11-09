@@ -71,3 +71,11 @@ HTTP 前后观察只证明接口的身份稳定。只有场景前后探针也匹
 系统/环境中已有 Apollo 枚举键的覆盖自动固定。仅存在于系统/环境中的业务键须在独立期望与真实启动两端一致声明 JVM 参数 runtime.config.overrideKeys（逗号分隔）；声明和值均计入身份。通过 Apollo Config API 请求未声明但存在于环境的键会直接拒绝（含类型读取），不悄悄忽略覆盖。Spring Environment 和默认系统 Bean 只暴露已声明的固定映射，未声明键按缺失处理。终端或执行器每次改变的无关环境标识不再参与业务身份。
 
 严格 Spring 上下文使用同一份已核验的系统/环境映射（含默认 systemProperties/systemEnvironment Bean），并拒绝无 location 的额外 placeholder/override 配置器及 SpEL。XML 解码时和最终值解析时均检查，防止占位符展开后拼成动态表达式。普通启动仍使用原上下文。
+
+## 真实进程权限恢复验收
+
+`pwsh -NoProfile -File ./.ai-workspace/scripts/runtime-permission.tests.ps1` 使用 Windows、PowerShell 7 和可用的 java/javac。只编译和启动独立 classpath 中的休眠 Java 夹具，不调用 Prepare/Start、不读取 Apollo、不连接业务存储。分别验证仅启动意图、仅登记文件两种恢复入口；第三个不同 launchId 的进程检查误杀边界。
+
+监督者先持有专用进程句柄并保存原 DACL，再只拒绝该进程的查询/终止权限；新观察者必须实际得到访问拒绝。调用真实 Status/Stop 检查未知身份不误报成功、其他可确认进程继续清理、记录字节保留；恢复 DACL 后用新执行者 Stop，并重复调用。全部专用进程在 finally 中恢复/清理，现场日志和状态文件保留在本次 `.runtime/local-runtime/acl_*` 目录；Java 夹具有五分钟自退出上限。
+
+2026-11-08 两种入口真实验收均通过，新观察者得到查询错误5且命令行不可读，恢复后可完成清理。此结论只覆盖本机Windows和专用Java夹具，不代表所有Windows版本/WMI提供器或业务Game/Login故障场景。现有null/空白及查询失败模拟回归继续保留，不由这次成功替代。
