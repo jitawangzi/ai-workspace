@@ -123,3 +123,7 @@ pwsh -NoProfile -File ./ai-sop.ps1 Doctor
 ```
 
 Verify 检查安装版本、manifest 和投影；Doctor 检查本机依赖与接入状态。存在 Hook 配置文件不等于客户端已加载/信任 Hook，实际启用方式遵循 `.ai-sop/docs/HARNESS_ADAPTERS.md`。缺少 Superpowers 时可执行 T1/T2；T3 按引擎能力规则处理，不宣称已经可用。
+
+交付补充材料可给 pack-review-evidence 传 `-AttachmentsManifest`，使用工作区相对文件路径的 JSON 数组显式列出全量、干净检出等报告；清单及附件自动进入来源索引和交付摘要，不递归收集未知内容。沿用本任务 evidence 输出目录及现有 Git 字节核对。
+
+全量并行验证可给 run-all-tests 传 `-DurationReport <已有results.json>`，在原并发上限内优先启动耗时长的套件。保留所有发现的测试、断言、默认900秒单套超时和独立进程；历史报告只影响顺序，损坏时回退名称顺序。查看 schedule.json、summary.json 和 native-harness-adapters 的 STAGE_MS 输出，区分排队收益与内部执行耗时；不把一次本机提速视为普遍保证。
