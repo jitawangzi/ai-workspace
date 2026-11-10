@@ -90,6 +90,12 @@ pwsh -NoProfile -File ./ai-sop.ps1 Task -Operation Run -Feature <Feature> -TaskI
 
 Inputs 完整诊断提供文件数、读取量、路径解析和哈希耗时。2026-11-09 对同一宿主输入的对照为3188文件、89,358,100字节，文件摘要一致；本机单次完整诊断约4.28秒降至1.84秒，仅作为测量结果。默认Start仍有500ms/8MiB预算，超过8MiB仍准确记录UNAVAILABLE，不扩大预算或排除真实源码。需要完整起点时在修改前使用已有Start -CaptureBaseline，不用后续快照补造起点。
 
+## 大型项目起点与交付材料
+
+本项目在 context/start-inputs.json 为新 T1/T2 Start 配置 15000ms、128MiB 预算，适配约 85MiB 输入；默认档位仍为 T2。完整输入未能在预算内读完时仍记录 UNAVAILABLE，不保存部分起点、不阻断普通测试。配置不重拍已有任务起点。旧版本的 500ms/8MiB 测量记录是历史事实；新入口使用记录中的实际预算。底层单次 IO 不提供硬超时保证。
+
+可按需调用 `.ai-sop/scripts/pack-review-evidence.ps1 -WorkspacePath . -Feature <功能> -TaskId <任务> -OutputPath <不存在的目录>`，复制已有执行记录明确引用的日志、报告、输入清单和补充证据，生成来源索引与摘要清单。建议输出到本任务 specs 目录，先核对原始日志内容，再按清单显式暂存；入口不自动上传、不改变任务状态。使用已有 export-review 的 DeliveryManifest 检查实际入库字节和遗漏。通用限制见 `.ai-sop/docs/BASELINE_AND_DELIVERY.md`。
+
 ## Git 归属与同步
 
 - 宿主根：`server.git`，保存 Java 工程和 SOP 安装入口；按当前任务与用户授权提交相关改动，保留其他已有改动。历史迁移任务的“只安装本地”不限制后续已授权交付。
