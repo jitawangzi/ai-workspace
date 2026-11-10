@@ -127,3 +127,7 @@ Verify 检查安装版本、manifest 和投影；Doctor 检查本机依赖与接
 交付补充材料可给 pack-review-evidence 传 `-AttachmentsManifest`，使用工作区相对文件路径的 JSON 数组显式列出全量、干净检出等报告；清单及附件自动进入来源索引和交付摘要，不递归收集未知内容。沿用本任务 evidence 输出目录及现有 Git 字节核对。
 
 全量并行验证可给 run-all-tests 传 `-DurationReport <已有results.json>`，在原并发上限内优先启动耗时长的套件。保留所有发现的测试、断言、默认900秒单套超时和独立进程；历史报告只影响顺序，损坏或DurationMs含布尔值时提示并回退名称顺序。查看 schedule.json、summary.json 和 native-harness-adapters 的 STAGE_MS 输出，区分排队收益与内部执行耗时；不把一次本机提速视为普遍保证。
+
+增量复审可给 export-review 传 `-PreviousReview <工作区相对旧导出路径>`，在完整报告中附逐仓提交差异、两次工作树变化及当前runId。旧报告不代表已获批准，脏工作树内容无法由提交差异重建；漏选旧仓标NOT_SELECTED/PARTIAL，异常旧报告不影响其他历史输出。保存到本任务specs/evidence，不增加门禁或自动关闭发现。
+
+通用JSON类型和路径反例复用引擎 boundary-cases 夹具，实际行为断言保留在消费者测试。Hook慢测试只排除隔离运行目录不需要的测试源码并重叠独立文件复制，全部真实进程/断言/超时不变；HOOK_PROCESS_METRICS可定位准备与调用开销。本轮均为本机合成资料和隔离进程，不连接Apollo或业务存储，不替代Linux/macOS实测。
