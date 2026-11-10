@@ -130,4 +130,6 @@ Verify 检查安装版本、manifest 和投影；Doctor 检查本机依赖与接
 
 增量复审可给 export-review 传 `-PreviousReview <工作区相对旧导出路径>`，在完整报告中附逐仓提交差异、两次工作树变化及当前runId。旧报告不代表已获批准，脏工作树内容无法由提交差异重建；漏选旧仓标NOT_SELECTED/PARTIAL，异常旧报告不影响其他历史输出。保存到本任务specs/evidence，不增加门禁或自动关闭发现。
 
+收尾前可用同一个附件清单调用export-review的`-AttachmentsManifest`，提示未定稿文档的缺失本地引用，并分别显示验证、当前输入和已提交字节的观察事实；package/remote不检查则明确NOT_CHECKED。先定稿审核记录、文档和待执行事项，再一次打包，不提前写“全部交付完成”，不把包内旧任务快照改成当前状态。提示非阻断，默认T2及完成条件不变。交付字节核对已按仓库小批读取Git对象，仍逐文件检查原始内容、保留缺口与原超时。
+
 通用JSON类型和路径反例复用引擎 boundary-cases 夹具，实际行为断言保留在消费者测试。Hook慢测试只排除隔离运行目录不需要的测试源码并重叠独立文件复制，全部真实进程/断言/超时不变；HOOK_PROCESS_METRICS可定位准备与调用开销。本轮均为本机合成资料和隔离进程，不连接Apollo或业务存储，不替代Linux/macOS实测。
