@@ -145,3 +145,5 @@ native-harness-adapters保留原全部客户端探针与Hook链，共享原900�
 
 
 验证事实与测试入口补充：审查准备提示、测试摘要和关注项共享记录字段解释，但测试摘要只看test，关注项包含compile；当前输入和证据可用性仍独立展示，不产生整体PASS。完整测试仍由引擎入口自动发现；已有SVN目录可通过 `-ToolDirectory D:/work-all/.tmp/sop-svn-1.15.0/tools/bin` 传入，避免临时改全局PATH。工具路径/版本在environment.json中记录；缺依赖的Git/SVN用例失败，不静默跳过。Hook用例在独立目录和注册表中分成两组、组内串行；两个并发名额占用现有MaxParallel额度，默认串行、全部用例和原超时不变；运行事实与性能范围见对应任务验收记录。Windows之外仍需另做实际验证。
+
+版本探测的 UNAVAILABLE 与清理未知分开记录。运行器结果目录保留逐工具 probe/failure JSON、实际身份、退出码和诊断；普通版本不可用且清理确认仍不阻断。清理未知时即使套件全部通过，summary.outcome 仍为 FAILED、运行器退出1，Quiet 也提示报告位置。按已有 PID 和启动时间确认归属后处理遗留，不按进程名或裸 PID 清理；原始失败及恢复记录不能覆盖为成功。此行为只纠正运行结果，不增加 T2 门禁，详见引擎 docs/BASELINE_AND_DELIVERY.md。
