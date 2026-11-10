@@ -81,3 +81,6 @@ $null=Assert-PaymentTrialReport (Join-Path $root 'baseline.xml') 'baseline'
 $null=Assert-PaymentTrialReport (Join-Path $root 'baseline.xml') 'restored'
 @{cases=$rows.ToArray();invalidReportsRejected=6;baselineAndRestoredZeroAccepted=$true;retainedFixture=$root;limits='Six real children; ten terminal-state substitutes; no business environment'}|ConvertTo-Json -Depth 7|Set-Content -LiteralPath $(if($OutputPath){$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputPath)}else{Join-Path $root 'classification-results.json'})
 Write-Output "PASS: $($rows.Count) classification cases plus healthy baseline/restored; real report-before-timeout rejected"
+
+# Git 隔离回归与现有结果分类共用入口，不增加完成门禁。
+& (Join-Path $PSScriptRoot 'payment-git-isolation.tests.ps1') -Workspace $Workspace

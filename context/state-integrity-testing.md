@@ -58,3 +58,5 @@
 `first-charge-calibration` 运行 `FirstChargeCalibrationTest` 三个精确方法：同一在线 FirstCharge/热 PayItem/PaymentCompletion/ServerHandler.ship 分支，分别使用计数替身与未重写 buy 的正式 FirstChargeActivity。共同核对提交前无响应/凭证、提交后成功、重复不再执行业务/Charge、配置缺失异常和保存未写入拒绝。正式 buy 只解锁付费项及同组免费项，钻石不变；另核对真实保存装配的活动快照，不能把旧 awards 计数解释为真实发奖。
 
 配置、前置活动装配和事务 writer 仍为隔离夹具；快照解码不是数据库冷读。本组不覆盖 ActivityHandler 下单前资格验证、领取接口 reward、完整 Game/Login、真实支付平台或崩溃恢复。已有 Recharge IT 与本组 FirstCharge 不互相替代。状态序列测试留到下次相关修改，本轮不新增框架或门禁。
+
+Git 不能仅靠 -C 隔离：正式入口在独立子进程清除全部继承的 Git 变量及外部配置，初始化和每阶段 Maven 前核对副本仓库身份。调用者环境保持不变。复用工具时保留 [内部子进程入口](../scripts/payment-trial-child.ps1)；它必须由独立 pwsh 运行，不在调用者进程中 dot-source 或直接调用。Git 故障回归已接入 payment-trial-tools，不增加门禁。

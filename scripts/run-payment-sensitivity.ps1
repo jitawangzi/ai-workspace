@@ -42,11 +42,13 @@ foreach($path in $paths){
 $snapshot=@{root=$root;source=$Workspace;files=$files.ToArray();kind='source copy, not clean checkout'}
 $snapshot|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $output 'trial-inputs.json')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../context/test-suites/payment-sensitivity.json') -Destination (Join-Path $output 'payment-expected.json')
-# Maven initialize 会调用 git log；空本地提交仅满足构建，不作为交付版本证明。
-& git -C $root init --quiet
-if($LASTEXITCODE){throw 'FIXTURE_GIT_INIT_FAILED'}
-& git -C $root -c user.name=Fixture -c user.email=fixture@localhost -c commit.gpgsign=false commit --allow-empty --no-verify -m 'isolated build fixture' --quiet
-if($LASTEXITCODE){throw 'FIXTURE_GIT_COMMIT_FAILED'}
+# Git 与 Maven 共用独立子进程边界，不在调用者进程中清空/恢复全局环境。
+$childEntry=Join-Path $PSScriptRoot 'payment-trial-child.ps1'
+$gitChild=Start-AiSopHiddenProcess -FilePath (Get-Process -Id $PID).Path -ArgumentList @('-NoProfile','-File',$childEntry,'-Mode','Initialize','-Root',$root) -RedirectStandardOutput (Join-Path $output 'git.stdout.log') -RedirectStandardError (Join-Path $output 'git.stderr.log') -TimeoutSeconds 60 -CloseStandardInput -PassThru
+try{$gitChild.WaitForExit()}finally{$gitChild.Dispose()}
+@{exitCode=$gitChild.ExitCode;rawExitCode=$gitChild.RawExitCode;failureCode=$gitChild.FailureCode;diagnostic=$gitChild.Diagnostic;completed=$gitChild.Completed;disposed=$gitChild.Disposed;exitKnown=$gitChild.ExitKnown;cleanup=$gitChild.Cleanup}|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $output 'git-process.json')
+Assert-TrialProcessResult -Handle $gitChild -Stage baseline
+Copy-Item -LiteralPath (Join-Path $root '.trial-git/identity.json') -Destination (Join-Path $output 'git-isolation.json')
 $source=Join-Path $root 'game/src/main/java/cn/game/games/net/game/module/recharge/PayItem.java'
 $original=[IO.File]::ReadAllBytes($source)
 $text=[Text.Encoding]::UTF8.GetString($original)
@@ -64,7 +66,7 @@ try {
         $report=Join-Path $root 'game/target/surefire-reports/TEST-cn.game.games.net.game.helper.PaymentIdempotencyTest.xml'
         # 只删除隔离副本中这个报告，确保本轮失败不能误用旧报告。
         if([IO.File]::Exists($report)){[IO.File]::Delete($report)}
-        $child=Start-AiSopHiddenProcess -FilePath (Get-Process -Id $PID).Path -ArgumentList @('-NoProfile','-File',(Join-Path $root '.ai-workspace/scripts/run-java-tests.ps1'),'-Project','game','-Test','PaymentIdempotencyTest','-ExpectedTestsFile',(Join-Path $output 'payment-expected.json')) -Environment @{AI_SOP_INVOCATION_SESSION_ID=$null} -RedirectStandardOutput (Join-Path $out 'stdout.log') -RedirectStandardError (Join-Path $out 'stderr.log') -TimeoutSeconds 1800 -HeartbeatSeconds 30 -Label $stage -CloseStandardInput -PassThru
+        $child=Start-AiSopHiddenProcess -FilePath (Get-Process -Id $PID).Path -ArgumentList @('-NoProfile','-File',$childEntry,'-Mode','Test','-Root',$root,'-ExpectedTestsFile',(Join-Path $output 'payment-expected.json')) -Environment @{AI_SOP_INVOCATION_SESSION_ID=$null} -RedirectStandardOutput (Join-Path $out 'stdout.log') -RedirectStandardError (Join-Path $out 'stderr.log') -TimeoutSeconds 1800 -HeartbeatSeconds 30 -Label $stage -CloseStandardInput -PassThru
         try{$child.WaitForExit()}finally{$child.Dispose()}
         $code=$child.ExitCode
         @{exitCode=$code;rawExitCode=$child.RawExitCode;failureCode=$child.FailureCode;diagnostic=$child.Diagnostic;completed=$child.Completed;disposed=$child.Disposed;exitKnown=$child.ExitKnown;cleanup=@{confirmed=$child.Cleanup.confirmed;exited=$child.Cleanup.exited;exitCode=$child.Cleanup.exitCode;diagnostic=$child.Cleanup.diagnostic}}|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $out 'process.json')

@@ -41,3 +41,5 @@ EngineRoot和LogRoot在入口按调用者PowerShell位置解析为绝对文件�
 - `payment-trial-tools`：PowerShell 7；六个独占子进程（含先写匹配报告再真实超时）、十个终态替身、六个报告反例。临时现场和 classification-results.json 保留；清理未知即失败。不访问业务服务，不运行 Maven。
 - `run-payment-sensitivity.ps1`：Java 21/Maven/Git及依赖缓存或下载权限；复制六模块 pom/src 与两个 Java 运行脚本到新临时目录，变异仅作用于副本。四阶段逐一运行同一五方法清单，不减少测试或放宽原1800秒阶段超时。源码、target和本地空 Git 提交保留，材料写指定的新任务 evidence 子目录。失败保留已产生材料；恢复副本并核对源与副本摘要。不自动删除或上传现场，不连接 Apollo/业务数据库。
 - `first-charge-calibration`：三个 JUnit 方法分别走替身和正式 FirstChargeActivity.buy。隔离配置、真实玩家邮箱/发货入口/保存装配、受控 writer；写 target、JUnit与本机日志，关闭邮箱并恢复配置与统计入口。只证明买入资格及共同提交契约，不证明领取发奖或数据库持久化。
+
+支付反证的 Git 初始化及四个 Maven 阶段经独立 payment-trial-child.ps1 清除继承的全部 GIT_*，固定空用户/系统配置和模板，并检查实际 Git 目录、工作树及空提交；调用者环境不改。初始化单独有60秒上限，原测试阶段1800秒不变。payment-trial-tools 追加三个真实 Git 场景（两种重定向组合及测试失败），核对外部 HEAD、索引原始字节、暂存/工作树与调用者环境不变；Java 报告为合成夹具，完整 Maven 反证另记。Git 终态与身份另存 git-process.json、git-isolation.json，源码 restoration.json 只说明源码恢复，不能单独证明仓库隔离。
