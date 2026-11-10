@@ -1,0 +1,5 @@
+[
+  "cn.game.games.net.game.helper.FirstChargeCalibrationTest#realAndSubstituteWaitForCommitAndDeduplicate",
+  "cn.game.games.net.game.helper.FirstChargeCalibrationTest#realConfigurationErrorMatchesFailureSubstitute",
+  "cn.game.games.net.game.helper.FirstChargeCalibrationTest#realAndSubstituteRejectUncommittedSave"
+]

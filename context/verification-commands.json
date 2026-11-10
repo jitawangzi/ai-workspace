@@ -150,6 +150,34 @@
         "./.ai-workspace/scripts/runtime-concurrency.tests.ps1"
       ],
       "kind": "test"
+    },
+    "payment-trial-tools": {
+      "kind": "test",
+      "batch": "payment-trial-tools",
+      "executable": "pwsh",
+      "arguments": [
+        "-NoProfile",
+        "-File",
+        "./.ai-workspace/scripts/payment-sensitivity.tests.ps1"
+      ],
+      "timeoutSeconds": 300
+    },
+    "first-charge-calibration": {
+      "kind": "test",
+      "batch": "first-charge-calibration",
+      "executable": "pwsh",
+      "arguments": [
+        "-NoProfile",
+        "-File",
+        "./.ai-workspace/scripts/run-java-tests.ps1",
+        "-Project",
+        "game",
+        "-Test",
+        "FirstChargeCalibrationTest",
+        "-ExpectedTestsFile",
+        "./.ai-workspace/context/test-suites/first-charge-calibration.json"
+      ],
+      "timeoutSeconds": 1800
     }
   }
 }

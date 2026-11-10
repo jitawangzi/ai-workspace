@@ -35,3 +35,9 @@ EngineRoot和LogRoot在入口按调用者PowerShell位置解析为绝对文件�
 引擎 `scripts/tests/workflow-concurrency-boundaries.tests.ps1` 仅在独立临时目录运行，启动自身 PowerShell 子进程并回收；不连接 Apollo、数据库或 Redis。覆盖锁复用与崩溃释放、冷启动操作预算、真实runner读取竞争、连续发布的完整可见性及拒绝后候选保留。成功/失败夹具均保留，空锁哨兵不作为进程存活依据，运行中不要按文件年龄删除锁。
 
 入口通过证明上述脚本机制，不证明游戏业务或所有历史事故已经逐次还原。当前调查、受控反例与原始报告见规格仓 `features/ServerArchitectureAndAgentReadiness/tasks/parallel-runner-timeout-and-root-cause/root-cause.md`；引擎的恢复材料处置见 `.ai-sop/docs/WORKFLOW_IO_BOUNDARIES.md`。
+
+## 支付反证与首充校准
+
+- `payment-trial-tools`：PowerShell 7；六个独占子进程（含先写匹配报告再真实超时）、十个终态替身、六个报告反例。临时现场和 classification-results.json 保留；清理未知即失败。不访问业务服务，不运行 Maven。
+- `run-payment-sensitivity.ps1`：Java 21/Maven/Git及依赖缓存或下载权限；复制六模块 pom/src 与两个 Java 运行脚本到新临时目录，变异仅作用于副本。四阶段逐一运行同一五方法清单，不减少测试或放宽原1800秒阶段超时。源码、target和本地空 Git 提交保留，材料写指定的新任务 evidence 子目录。失败保留已产生材料；恢复副本并核对源与副本摘要。不自动删除或上传现场，不连接 Apollo/业务数据库。
+- `first-charge-calibration`：三个 JUnit 方法分别走替身和正式 FirstChargeActivity.buy。隔离配置、真实玩家邮箱/发货入口/保存装配、受控 writer；写 target、JUnit与本机日志，关闭邮箱并恢复配置与统计入口。只证明买入资格及共同提交契约，不证明领取发奖或数据库持久化。

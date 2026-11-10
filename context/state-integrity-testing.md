@@ -44,4 +44,17 @@
 
 后续优先复用state-integrity或run-java-tests及精确方法清单；合成测试组合入口复用已有受控子进程和报告检查，不能为消除身份冲突放宽生产权限。已有独立审核先读规则与测试，再读实现总结；没有要求审核的T2不因此新增审核环节。
 
-试用结果判定的修正版位于specs的`ServerArchitectureAndAgentReadiness/tasks/trial-runner-failure-classification/evidence/run-trial.ps1`，配套`trial-process-result.ps1`。旧behavior-contract-test-sensitivity目录为历史证据，不再作为运行入口。新试用先确认运行器已结束且Dispose完成、退出已知、无FailureCode/输出/清理诊断、清理确认退出，再接受原版/恢复版的0或变异版恰好1；随后核对新鲜JUnit目标断言。124/125、其他非零码或清理未知，即使已有匹配失败报告也不得算命中。报告与输入清单必须为本轮独立副本准备，不能盲目重复覆盖历史材料；此为试用脚本修正，不新增SOP门禁。
+## 正式反证与同分支校准入口
+
+可复用入口已迁到 [run-payment-sensitivity.ps1](../scripts/run-payment-sensitivity.ps1)，判定在 [payment-trial-result.ps1](../scripts/payment-trial-result.ps1)，回归在 [payment-sensitivity.tests.ps1](../scripts/payment-sensitivity.tests.ps1)。两份历史任务 evidence 保留原脚本和原观察，不再作为执行入口。新入口不依赖历史任务、旧绝对路径或已有报告；每次创建独立源码副本，材料目录必须不存在。
+
+```powershell
+# 从宿主根执行；替换为当前实际任务 ID，材料放在任务 evidence 下。
+& ./.ai-workspace/scripts/run-payment-sensitivity.ps1 -Workspace . -OutputPath './.ai-workspace/specs/features/ServerArchitectureAndAgentReadiness/tasks/TaskId/evidence/payment-trial'
+```
+
+任务内通过现有 Task Run 记录上面命令，外层总预算覆盖四个阶段；每阶段仍为1800秒。原版/恢复版退出0、变异版恰好1，且必须完成进程收尾、退出已知、无输出/清理诊断，再检查五个精确方法和两处目标断言。124/125、其他非零码或清理未知，即使报告匹配也不得计为命中。原始日志、JUnit、终态和源码摘要保留；最终恢复副本并核对源树与副本摘要，失败也写恢复结果。临时源码副本不是干净 Git 检出，不证明交付完整性。
+
+`first-charge-calibration` 运行 `FirstChargeCalibrationTest` 三个精确方法：同一在线 FirstCharge/热 PayItem/PaymentCompletion/ServerHandler.ship 分支，分别使用计数替身与未重写 buy 的正式 FirstChargeActivity。共同核对提交前无响应/凭证、提交后成功、重复不再执行业务/Charge、配置缺失异常和保存未写入拒绝。正式 buy 只解锁付费项及同组免费项，钻石不变；另核对真实保存装配的活动快照，不能把旧 awards 计数解释为真实发奖。
+
+配置、前置活动装配和事务 writer 仍为隔离夹具；快照解码不是数据库冷读。本组不覆盖 ActivityHandler 下单前资格验证、领取接口 reward、完整 Game/Login、真实支付平台或崩溃恢复。已有 Recharge IT 与本组 FirstCharge 不互相替代。状态序列测试留到下次相关修改，本轮不新增框架或门禁。

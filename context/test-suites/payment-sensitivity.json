@@ -1,0 +1,7 @@
+[
+  "cn.game.games.net.game.helper.PaymentIdempotencyTest#concurrentAndRepeatedNotificationsSucceedOnlyAfterCommit",
+  "cn.game.games.net.game.helper.PaymentIdempotencyTest#legacyAndUnprovenStatesRemainBlocked",
+  "cn.game.games.net.game.helper.PaymentIdempotencyTest#proofRejectsIdentityProductAndAmountMismatch",
+  "cn.game.games.net.game.helper.PaymentIdempotencyTest#versionedProofRoundTripAndOldJsonCompatibility",
+  "cn.game.games.net.game.helper.PaymentIdempotencyTest#baselineJsonSchemaRejectsNewProofAndRequiresStoppedUpgrade"
+]
