@@ -94,7 +94,9 @@ Inputs 完整诊断提供文件数、读取量、路径解析和哈希耗时。2
 
 本项目在 context/start-inputs.json 为新 T1/T2 Start 配置 15000ms、128MiB 预算，适配约 85MiB 输入；默认档位仍为 T2。完整输入未能在预算内读完时仍记录 UNAVAILABLE，不保存部分起点、不阻断普通测试。配置不重拍已有任务起点。旧版本的 500ms/8MiB 测量记录是历史事实；新入口使用记录中的实际预算。底层单次 IO 不提供硬超时保证。
 
-可按需调用 `.ai-sop/scripts/pack-review-evidence.ps1 -WorkspacePath . -Feature <功能> -TaskId <任务> -OutputPath <不存在的目录>`，复制已有执行记录明确引用的日志、报告、输入清单和补充证据，生成来源索引与摘要清单。建议输出到本任务 specs 目录，先核对原始日志内容，再按清单显式暂存；入口不自动上传、不改变任务状态。使用已有 export-review 的 DeliveryManifest 检查实际入库字节和遗漏。通用限制见 `.ai-sop/docs/BASELINE_AND_DELIVERY.md`。
+可按需调用 `.ai-sop/scripts/pack-review-evidence.ps1 -WorkspacePath . -Feature <功能> -TaskId <任务> -OutputPath <不存在的目录>`，复制已有执行记录明确引用的日志、报告、输入清单和补充证据，生成来源索引与摘要清单。输出到本任务 specs 的 evidence 目录，避免项目根下的材料进入输入扫描导致验证过期；先核对原始日志内容，再按清单显式暂存。入口不自动上传、不改变任务状态。使用已有 export-review 的 DeliveryManifest 检查实际入库字节和遗漏。通用限制见 `.ai-sop/docs/BASELINE_AND_DELIVERY.md`。
+
+共用测试清理遇到 OUTPUT_DRAIN_TIMED_OUT 时保留未知诊断与登记；Cleanup.confirmed 仅能说明本地清理结果，不能抵消后代退出未知。再次调用清理也不会自动确认；测试以独立可信句柄回收自身探针，保留失败现场和补救错误。
 
 ## Git 归属与同步
 
