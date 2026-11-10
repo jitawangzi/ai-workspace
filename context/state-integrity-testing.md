@@ -43,3 +43,5 @@
 按需反证在独立源码副本中分别去掉proofAwaitingCommit保护和凭证全字段匹配，原版/恢复版全部通过、两种变异成功编译后在预期assertFalse失败才计为检测成功。直接凭证断言与正式ship副作用断言分开说明；不推断所有错单入口都经过本次变异。试用材料见specs的ServerArchitectureAndAgentReadiness/tasks/behavior-contract-test-sensitivity；不会将变异提交到业务源码。
 
 后续优先复用state-integrity或run-java-tests及精确方法清单；合成测试组合入口复用已有受控子进程和报告检查，不能为消除身份冲突放宽生产权限。已有独立审核先读规则与测试，再读实现总结；没有要求审核的T2不因此新增审核环节。
+
+试用结果判定的修正版位于specs的`ServerArchitectureAndAgentReadiness/tasks/trial-runner-failure-classification/evidence/run-trial.ps1`，配套`trial-process-result.ps1`。旧behavior-contract-test-sensitivity目录为历史证据，不再作为运行入口。新试用先确认运行器已结束且Dispose完成、退出已知、无FailureCode/输出/清理诊断、清理确认退出，再接受原版/恢复版的0或变异版恰好1；随后核对新鲜JUnit目标断言。124/125、其他非零码或清理未知，即使已有匹配失败报告也不得算命中。报告与输入清单必须为本轮独立副本准备，不能盲目重复覆盖历史材料；此为试用脚本修正，不新增SOP门禁。
