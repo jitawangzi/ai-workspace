@@ -33,3 +33,13 @@
 `scripts/run-payment-process-tests.ps1` 执行 `PaymentProcessRecoveryIT` 六个精确方法：正式充值发奖、双 JVM 事件总线通信、真实请求超时、重复请求，以及占位后/保存前/commit 前/commit 后的强制退出和新进程恢复。新目标进程自身的玩家字段与独立数据库冷读同时核对；详细契约见宿主 [普通充值恢复验收](../../doc/payment-process-recovery.md)。
 
 占位后未完成的订单恢复为待核对并阻止自动重发，不能把这一保护行为标记为“自动补偿成功”。本组采用专用业务启动器，前任死亡后才启动继任，不证明 Redis 路由权或并存节点写入安全；也不替代完整 Game/Login 或支付平台验收。新增业务按其实际链路补对应资产和副作用断言，不能照抄本组钻石预期。
+
+## 轻量业务预期与反证试用
+
+相关T2修改先在现有任务说明中引用业务依据，列出入口/前置条件、应变化的状态和副作用、不应变化的旧行为、失败/重复/旧数据结果。此为已有验收点的写法，不要求新表单或批准。未知承诺不能从当前实现反推。
+
+首次试用为生产ServerHandler.ship的在线FirstCharge热凭证分支，复用PaymentIdempotencyTest的5个方法。断言包含提交前凭证不可用、同单不重复执行奖励/Charge/保存、身份或购买参数不匹配不能复用凭证。奖励和存储为替身，durableStore=null；不等于普通Recharge的真实钻石、持久claim/receipt或支付平台验收。
+
+按需反证在独立源码副本中分别去掉proofAwaitingCommit保护和凭证全字段匹配，原版/恢复版全部通过、两种变异成功编译后在预期assertFalse失败才计为检测成功。直接凭证断言与正式ship副作用断言分开说明；不推断所有错单入口都经过本次变异。试用材料见specs的ServerArchitectureAndAgentReadiness/tasks/behavior-contract-test-sensitivity；不会将变异提交到业务源码。
+
+后续优先复用state-integrity或run-java-tests及精确方法清单；合成测试组合入口复用已有受控子进程和报告检查，不能为消除身份冲突放宽生产权限。已有独立审核先读规则与测试，再读实现总结；没有要求审核的T2不因此新增审核环节。
