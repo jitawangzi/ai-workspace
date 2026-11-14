@@ -53,7 +53,11 @@ HTTP 前后观察只证明接口的身份稳定。只有场景前后探针也匹
 
 严格身份采集与协议探针单独使用 30 秒有界等待，普通业务协议保持原 5 秒时限。
 
-使用 Task Run 保存实际命令、退出码和 `RUNTIME_OBSERVATION` JSON。Prepare 单独记录构建；测试使用 `scripts/check-local-runtime.ps1 -Snapshot <新快照> -LoginUrl <本机登录地址> -LogicServerId server1 -ConfirmDataScope`，它把 Start、场景、Stop 放在同一生命周期，Stop 在 finally 中。可加 `-VerifyArtifactRevocation` 验证专属快照变更和恢复后均拒绝身份；或使用新快照加 `-VerifyXmlRevocation`，追加合法 XML 注释并等待真实加载成功，恢复字节后才执行首次探针，必须拒绝。两种撤销分别使用新快照。不要用 Task Run 启动服务后立即退出，否则后台进程继承的输出句柄会使证据采集失败。旧入口未配置观察时输出 `RUNTIME_UNVERIFIED`，进程成功不能宣称目标核验完成。`runtime-evidence-tests` 覆盖本机 HTTP 夹具、失败证据和真实 Java 参数编码；`runtime-identity-java` 覆盖摘要与协议身份判定，均不能替代实际联调。
+使用 Task Run 保存实际命令、退出码和 `RUNTIME_OBSERVATION` JSON。Prepare 单独记录构建；测试使用 `scripts/check-local-runtime.ps1 -Snapshot <新快照> -LoginUrl <本机登录地址> -LogicServerId <已开服虚拟服ID> -ConfirmDataScope`，它把 Start、场景、Stop 放在同一生命周期，Stop 在 finally 中。可加 `-VerifyArtifactRevocation` 验证专属快照变更和恢复后均拒绝身份；或使用新快照加 `-VerifyXmlRevocation`，追加合法 XML 注释并等待真实加载成功，恢复字节后才执行首次探针，必须拒绝。两种撤销分别使用新快照。不要用 Task Run 启动服务后立即退出，否则后台进程继承的输出句柄会使证据采集失败。旧入口未配置观察时输出 `RUNTIME_UNVERIFIED`，进程成功不能宣称目标核验完成。`runtime-evidence-tests` 覆盖本机 HTTP 夹具、失败证据和真实 Java 参数编码；`runtime-identity-java` 覆盖摘要与协议身份判定，均不能替代实际联调。
+
+### 常见联调前置排查
+- **`-LogicServerId` 须为已开服的虚拟服 ID**：`PlayerHandler` 会通过 `ValidServerService.checkValidServer` 校验 `VirtualServer.xml` 中 `openTime <= 当前时间`。传入物理节点名（如 `game_test`）或 `openTime` 晚于当前时间的虚拟服（如配置为 `2030-05-03 10:00:00` 的 `server1`）均会返回 `errorCode=26`（`server_not_found`）。联调前先核对 `VirtualServer.xml`，例如 `server4`（`openTime="2025-05-03 10:00:00"`）可直接用于当前时间窗口。
+- **`Prepare` 阶段的 IDE 文件占用**：`run_server.ps1 -Action Prepare` 会执行 `mvn -B -DskipTests clean package`。若 Eclipse（及其 `lemminx` / `SonarLint` 后台进程）正打开本工程，可能锁定 `util\target\maven-archiver\pom.properties` 导致 `maven-clean-plugin` 失败；执行 `Prepare` 前请先在 Eclipse 中关闭工程或退出 IDE。
 
 
 ## 边界回归
