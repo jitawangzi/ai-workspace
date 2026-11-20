@@ -24,6 +24,7 @@
 | 保存、幂等、失败与恢复专项验证 | [state-integrity-testing.md](state-integrity-testing.md) |
 | 实际发布、灰度、迁移或恢复演练 | [发布与恢复](../workflows/release-recovery.md) |
 | 高风险逻辑检查；已要求 logic-auditor 时 | [logic-audit-game-server.md](logic-audit-game-server.md) |
+| 独立 Bug 排查、疑似误报分诊与最小复现 | [debugging-playbook.md](debugging-playbook.md) |
 | 活动、任务、事件、条件、奖励、红点 | [business-patterns/README.md](business-patterns/README.md) |
 
 ### 流程专属索引
