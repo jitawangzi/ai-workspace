@@ -367,56 +367,48 @@ public void handleEvent(PlayerEvent event) {
 
 ---
 
-## 12. GM 指令架构 (GM Command Architecture)
+## 12. GM 与运维测试平台规范 (GM & Ops Platform)
 
-为了避免 `TestHandler`过于臃肿，GM 指令采用**命令模式 + 注册表**的方式进行模块化管理。
+为了保障研发调试效率与生产环境的严格安全性，GM 指令全面采用**注解驱动自省架构 + 三级安全分级 + 统一调度器**体系，杜绝旧式无类型字符串拼接与硬编码注册。
 
-### 12.1 架构说明
+### 12.1 架构与三级安全分级
 
-*   **`GmRegistry`**: 核心注册表，负责指令的分发 (`dispatch`)。
-*   **`AbstractGm`**: GM 指令类的基类，提供参数解析辅助方法 (`getInt`, `getLong`) 和注册方法 (`register`)。
-*   **`GmCommand`**: 函数式接口，定义具体的指令处理逻辑。
-*   **指令类位置**: `cn.game.games.net.game.gm.command` 包下。
+*   **调度核心 `GmDispatcher`**：统一解析入口，负责命令分词、命名参数与位置参数绑定、类型转换、线程安全派发与全量 Schema 目录自描述暴露。
+*   **安全分级体系 `GmSecurityTier`**：
+    *   **`DEV_TEST_ONLY`**（研发与测试专用）：全服/个人高危写操作、模块重置（`player.gm.resetModule`）、时间偏移修改（`player.time.set/offset`）、可控随机序列注入（`player.gm.rng.*`）、请求Trace录制（`player.gm.trace.*`）及快照还原（`player.gm.snapshot.*`）。**在生产环境（`RunMode.PRODUCTION`）启动或自省时自动强行裁剪与屏蔽，严防外部入侵**。
+    *   **`OPS_SAFE`**（只读运维排查）：支持生产环境安全执行的只读指令，如配表自描述与分页检索（`config.tables`、`config.list`）、协议目录自省（`proto.catalog`）、时间查询（`player.time.status`）、修数算子清单与审计日志查询（`repair.list`、`repair.auditlog`）等。
+    *   **`OPS_REPAIR`**（受控具名修数）：生产环境下**唯一允许**的写操作，严禁开放通用任意写接口。修数必须封装为具名算子（`OpsRepairService`），强制执行 `dryRun` 沙箱内存演练、JSON Diff 比对、`PlayerWriteGuard` 隔离落盘与 JSONL 审计日志记录。
 
-### 12.2 新增 GM 指令流程
+### 12.2 注解体系与开发规范
 
-1.  **创建/修改指令类**:
-    *   在 `cn.game.games.net.game.gm.command` 包下找到相关模块的类（如 `BattleGm`, `ItemGm`）。
-    *   如果是新模块，新建继承自 `AbstractGm` 的类，并添加 `@Component` 注解。
+1.  **分组注解 `@GmGroup`**：
+    *   标注于 Spring Bean 类上（必须添加 `@Component`）。
+    *   参数：`name`（分组英文标识，如 `player`, `config`, `repair`）、`description`。
+2.  **动作注解 `@GmAction`**：
+    *   标注于处理方法上。
+    *   参数：
+        *   `name`：动作短名（或两段名），系统自动注册 canonical ID `groupName.actionName`；
+        *   `security`：安全分级（`DEV_TEST_ONLY`, `OPS_SAFE`, `OPS_REPAIR`）；
+        *   `scope`：作用域（`GmScope.PLAYER` 或 `GmScope.GLOBAL`）；
+        *   `aliases`：可选快捷别名（如 `timestatus`）；
+        *   `dryRunSupported`：是否支持零副作用内存沙箱演练；
+        *   `description` / `example`：自描述文档与使用示例。
+3.  **参数注解 `@GmParam`**：
+    *   标注于方法参数上，支持自动注入 `Player player` 上下文。
+    *   参数：`name`、`description`、`required`、`defaultValue`、`example`。
+    *   类型支持自动转换：`int`, `long`, `boolean`, `String`, 枚举, 结构化 JSON 等。
 
-2.  **实现处理方法**:
-    *   方法签名：`private void myCommand(Player player, String[] params)`
-    *   **参数说明**: `params[0]` 是指令本身，`params[1]` 是第一个参数，以此类推。
-    *   使用 `getInt(params, index)` 或 `getLong(params, index)` 安全获取参数。
+### 12.3 时间与可控随机源收敛强制约定
 
-3.  **注册指令**:
-    *   在类的 `init()` 方法中调用 `register("cmdName", this::myCommand)`。
+*   **时间统一收敛**：业务代码中**严禁直调** `System.currentTimeMillis()` 或 `new Date()`，必须统一调用 `DateUtil.currentTimeMillis()` / `DateUtil.toDate()`，以便研发与测试环境通过 `player.time.set` 进行时间快进与跨天仿真。
+*   **随机源统一收敛**：业务逻辑中**严禁私自** `new Random()` 或调用未经收敛的外部伪随机接口，必须统一使用 `Rnd` 系列方法。`Rnd` 支持在测试环境中注入确定性种子（`player.gm.rng.seed`）或指定预置随机数序列（`player.gm.rng.sequence`），以保障复杂业务测试的确定性复现。
 
-### 12.3 代码示例
+### 12.4 生产受控具名修数开发规范 (OPS_REPAIR)
 
-```java
-@Component
-public class MyModuleGm extends AbstractGm {
-    @Override
-    public void init() {
-        register("mycmd", this::handleMyCmd);
-    }
-
-    private void handleMyCmd(Player player, String[] params) {
-        // params[0] == "mycmd"
-        int value = getInt(params, 1); // 获取第一个参数
-        // 业务逻辑...
-        player.getModule(MyModule.class).doSomething(value);
-    }
-}
-```
-
-### 12.4 现有指令参考
-
-*   **`BattleGm`**: 关卡、副本相关 (`ly`, `zxgk`, `slzj`)
-*   **`ItemGm`**: 物品相关 (`item`, `itemdel`)
-*   **`HeroGm`**: 英雄相关 (`hero`, `herolv`)
-*   **`PlayerGm`**: 玩家基础 (`newday`, `time`)
+*   **算子集中收敛**：所有运维修数任务集中定义于 `OpsRepairService.java`，登记唯一的 `repairId`（例如天道修为修复 `tdlv`、卡战斗状态清理 `stuck_battle` 等）。
+*   **沙箱克隆与零副作用演练**：执行修数时默认建议传入 `dryRun=true`，系统在深克隆的 Player 沙箱中执行变更，利用 JSON Diff 生成变更前后差异，不产生任何真实数据库落盘与广播推送。
+*   **审计与持久化门禁**：真实执行（`dryRun=false`）必须提供非空 `reason` 操作事由，经过 `PlayerWriteGuard` 线程隔离串行落盘，并将包含操作人、操作时间、变动 Diff 的结构化条目实时写入独立审计日志文件 `ops_repair_audit.jsonl`。
+*   **自描述与运行期热重扫**：通过 `repair.list` 查询所有可用修数算子及参数规范；通过 `repair.rescan` 在不重启服务的情况下触发全量 GM 动作与 Schema 的动态热更重扫与自省。
 
 ---
 

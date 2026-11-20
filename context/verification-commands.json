@@ -178,6 +178,30 @@
         "./.ai-workspace/context/test-suites/first-charge-calibration.json"
       ],
       "timeoutSeconds": 1800
+    },
+    "module-acceptance-platform": {
+      "kind": "test",
+      "batch": "module-acceptance-platform",
+      "executable": "pwsh",
+      "arguments": [
+        "-NoProfile",
+        "-File",
+        "./.ai-workspace/scripts/run-java-tests.ps1",
+        "-Project",
+        "game",
+        "-Test",
+        "ModuleAcceptancePlatformTest",
+        "-ExpectedTestsFile",
+        "./.ai-workspace/context/test-suites/module-acceptance-platform.json"
+      ],
+      "caseIds": [
+        "TC-MAP-01",
+        "TC-MAP-02",
+        "TC-MAP-03",
+        "TC-MAP-04",
+        "TC-MAP-05"
+      ],
+      "timeoutSeconds": 1800
     }
   }
 }

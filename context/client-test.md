@@ -1,4 +1,4 @@
----
+﻿---
 
 # 模拟客户端测试指南
 
@@ -240,3 +240,54 @@ sendAndWait(newDayReq);
 | 保存与展示 | 回包、通知、资源增减、领取位一致；保存类缺陷补新对象重载，红点验证亮起和消除 |
 | 隔离与恢复 | 独立账号/轮次、可复现随机与时间源，结束恢复偏移；不得误停其他 Java 进程 |
 | 证据收尾 | 同一 Kind/Batch 复测；保留失败尝试，验证真实测试数和退出码，记录未执行范围 |
+
+
+---
+
+## 10. AI 黑盒 + 白盒一体化测试标准流程（批次 A~D 平台能力）
+
+在 GmAndTestPlatform（批次 A~D）测试平台能力支撑下，模拟客户端测试由纯黑盒发包升级为**黑盒发包 + 白盒自省 + 服务端 Trace 录制 + 冷重载落库**一体化测试闭环。
+
+### 10.1 五步一体化测试闭环标准
+1. **Arrange（环境准备与快照基线）**：
+   - 模块数据初始化：使用 resetModules("ModuleA", "ModuleB") 重置指定模块（或空参重置全部模块）至初始状态。
+   - 环境快照留底：调用 whiteBox.saveSnapshot("snapshot_name") 保存测试前快照基线，支持用例中途或异常时精确回滚。
+   - 确定性控制：如需时间或随机数干预，调用 setVirtualTimeOffset / setVirtualTime 或 seedRng / sequenceRng 消除偶现不确定性。
+2. **Act & Trace（黑盒发包与白盒追踪联合录制）**：
+   - 使用 sendAndTrace(request) 代替普通 sendAndWait，在底层自动开启服务端 Trace 录制、发送业务协议、并在最外层 finally 自动拉取流水事件并关闭 Trace。
+   - 若业务抛出异常，底层自动将服务端 Trace 捕获的错误事件通过 addSuppressed 附加到业务异常中（EX-14, DR-11），避免关键服务端上下文丢失。
+3. **Assert（双重视角联合断言）**：
+   - 协议返回断言：校验 TracedResponse.getResponse() 消息体、状态字段与错误码。
+   - 服务端错误断言：调用 traced.assertNoServerErrors() 确认服务端业务链路无未捕获异常或逻辑报警。
+   - 资源流水净额断言：调用 traced.assertResourceDelta(configId, expectedDelta, opType) 精确比对资源变化量与操作类型。
+   - 流水事件断言：调用 traced.assertHasResourceEvent(configId, isAdd) 校验增减事件。
+4. **Introspect（深入内存校验白盒状态）**：
+   - 内存点分路径自省：使用 inspectModuleField("ModuleName", "path.to.field") 读取服务端最新内存状态，避免单纯依赖下发协议。
+   - 跨类型等价断言：调用 assertModuleFieldEquals("ModuleName", "path.to.field", expectedValue)，自动处理 Number 跨类型比对。
+5. **Cold Reload & Verify（强制落盘与冷重载验证持久化）**：
+   - 强制落盘并重启加载：调用 flushAndColdReload()，触发服务端强制写库并将实体冷读重构（校验 reloadedFromDb == true 且实体哈希发生变化），同时刷新客户端本地缓存。
+   - 二次状态断言：重载后再次调用 assertModuleFieldEquals(...) 验证数据真正落盘无丢失。
+   - 环境复位：测试收尾调用 whiteBox.restoreSnapshot(...) 恢复快照，基类 ClientBaseScenarioTest 最外层 finally 自动执行 whiteBox.cleanupAll() 最佳努力复位时钟与随机源。
+
+### 10.2 WhiteBoxTestKit API 速查表
+| 分类 | 方法签名 | 说明 |
+|---|---|---|
+| **状态准备 (Arrange)** | resetModules(String... modules) / resetModules(List<String>) | 重置指定或全部模块 |
+| | saveSnapshot(String snapshotName) | 保存快照 |
+| | restoreSnapshot(String snapshotName) | 恢复快照并刷新客户端缓存 |
+| | listSnapshots() / deleteSnapshots() | 快照查询与清理 |
+| | setVirtualTimeOffset(offset, allowBackward, kick) | 调整虚拟时钟偏移量 |
+| | setVirtualTime(targetTime, allowBackward, kick) | 设定虚拟时钟绝对时间 |
+| | resetVirtualTime(allowBackward, kick) | 复位虚拟时钟 |
+| | seedRng(seed) / sequenceRng(intList, doubleList) | 设置确定性随机种子/预设序列 |
+| | resetRng() | 复位可控随机数生成器 |
+| **执行与追踪 (Act & Trace)** | sendAndTrace(Message request) | 发送协议并录制白盒 Trace |
+| | traceExecution(Supplier<T> action) | 块级白盒 Trace 录制 |
+| **复合断言 (TracedResponse)** | assertNoServerErrors() | 断言服务端无报错事件 (EX-14) |
+| | assertResourceDelta(configId, delta, [opType]) | 断言资源带符号变化净额 |
+| | assertHasResourceEvent(configId, isAdd) | 断言存在指定增减资源流水 |
+| **自省与落盘 (Introspect & Reload)** | inspectModule(moduleName) | 自省模块数据结构 (EX-15) |
+| | inspectModuleField(moduleName, dotPath) | 点分路径深入自省字段值 (EX-15) |
+| | assertModuleFieldEquals(moduleName, dotPath, expected) | 断言点分路径字段等价 (EX-15) |
+| | flushAndColdReload() | 强制落盘并冷重载，刷新本地缓存 (EX-15) |
+| **退出清理 (Cleanup)** | cleanupAll() | 自动最佳努力复位 Trace、时钟与随机源 (DR-12) |
