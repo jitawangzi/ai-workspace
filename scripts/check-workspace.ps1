@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 <#
 .SYNOPSIS
     只读检查工作区脚本/配置或迁移契约，不替代 Java 编译与业务测试。
@@ -49,7 +49,9 @@ if ($Mode -eq 'Syntax') {
         Assert-Contract (Test-Path -LiteralPath (Join-Path $aiRoot "context/$relative") -PathType Leaf) "Legacy knowledge missing: $relative"
     }
     $documents = @(
+        Get-Item -LiteralPath (Join-Path $hostRoot 'README.md')
         Get-Item -LiteralPath (Join-Path $aiRoot 'README.md')
+        Get-Item -LiteralPath (Join-Path $aiRoot 'specs/README.md')
         foreach ($directory in @('context', 'workflows', 'schemas')) {
             Get-ChildItem -LiteralPath (Join-Path $aiRoot $directory) -Recurse -File -Filter '*.md'
         }
