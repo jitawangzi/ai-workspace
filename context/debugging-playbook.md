@@ -8,18 +8,15 @@
 
 ## 1. 第一现场：日志目录与常见观测点
 
-所有实时运行日志默认输出在宿主根 `logs/`（已 Git 忽略，不纳入 SOP 输入指纹）：
+实时运行日志默认输出在宿主根 `logs/` 及进程目录（已 Git 忽略，不纳入 SOP 输入指纹）。**排查服务端 Bug 时务必先分清进程，切勿把模拟客户端的 `logs/*.log` 误当成主服日志**：
 
-| 日志路径 | 主要内容 | 优先排查场景 |
-|---|---|---|
-| `logs/err.log` | ERROR 级堆栈与异常 | 协议报错、NPE、SQL/Redis/RPC 异常、配置加载失败 |
-| `logs/warn.log` | WARN 级告警 | 业务校验失败、超时、容量/保存告警、降级提示 |
-| `logs/net.log` | 网络连接、登录与消息收发摘要 | 客户端连不上、断线、消息号不匹配、路由异常 |
-| `logs/stdout.log` | 进程标准输出与启动引导 | 服务启动卡住、Apollo 拉取失败、Spring/Vert.x 初始化异常 |
-| `logs/sslog/`、`logs/cylog/` | 业务统计/渠道流水日志 | 资源变更、充值/订单与业务行为事后核对 |
-| `logs/<YYYY-MM-DD>/` | 按天归档的历史日志 | 回溯非当天问题 |
+| 进程 | 实际日志路径 | 配置文件 | 优先排查场景 |
+|---|---|---|---|
+| **GameServer / CrossServer**（主服） | `${sys:SEVER_PATH}/logs/system/`：`stdout.log`、`system.log`、`net.log`、`warn.log`、`err.log`、`db.log`、`monitor.log`（按天归档在 `logs/system/<YYYY-MM-DD>/`）<br>`${sys:SEVER_PATH}/logs/game/` 与 `${sys:SEVER_PATH_CYLOG}`（业务/渠道统计流水，如 `login`/`recharge`/`money`/`item` 等） | `game/src/main/resources/log4j2.xml`<br>`util/.../Log4j2ApolloLoader.java` | 主服启动、协议报错、NPE、SQL/Redis/RPC 异常、配置加载失败、保存/容量告警、业务流水核对 |
+| **LoginServer**（登录服） | 控制台输出 + 启动目录 `init.log`（受 Apollo 动态配置覆盖时按远端配置为准） | `login/src/main/resources/log4j2.xml` | HTTP 登录、区服列表、账号校验与充值回调入口异常 |
+| **simulationclient**（模拟客户端） | `logs/stdout.log`、`logs/err.log`、`logs/warn.log`、`logs/net.log`（按天归档在 `logs/<YYYY-MM-DD>/`） | `simulationclient/log4j2.xml` | 模拟客户端协议场景脚本执行、压测与客户端侧断言失败 |
 
-> 关键配置：`simulationclient/log4j2.xml`、`util/.../Log4j2ApolloLoader.java`；启动期日志级别和输出路径受 Apollo 与 JVM 参数影响（见 [doc/deployment_guide.md](../../doc/deployment_guide.md)）。
+> 启动期日志级别、Apollo 动态覆盖及各服务端口见 [doc/deployment_guide.md](../../doc/deployment_guide.md)。
 
 ---
 
@@ -36,7 +33,7 @@
    - `gm.trace.*`：录制非生产业务请求 Trace、资源流水与 ERROR 日志。
    - `time.*`：非生产跨平台虚拟时钟（`DateUtil` / 跨天 / 跨周 / 跨月结算测试），排查周期重置类 Bug 必用。
    - `gm.snapshot.*` / `gm.flushAndColdReload`：非生产玩家快照与强制落盘冷重载，用于复现“内存态正常、重登后丢失”类持久化 Bug。
-   - `gm.rng`：非生产可控随机，用于复现概率掉落/抽卡类 Bug。
+   - `gm.rng.*`（`gm.rng.seed` / `gm.rng.sequence` / `gm.rng.status` / `gm.rng.reset`）：非生产可控随机，用于复现概率掉落/抽卡类 Bug。
    - *安全边界*：生产模式（`RunMode.PRODUCTION`）硬禁用 `DEV_TEST_ONLY` 与 `0x6f`，只读排查仅限 `OPS_SAFE`。
 3. **模拟客户端 & 模块双轨验收**：
    - 协议级复现脚本：`run_client.ps1 -TestClass <完整类名>`，规则见 [client-test.md](client-test.md)。

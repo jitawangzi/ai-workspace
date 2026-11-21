@@ -2,6 +2,7 @@
 /specs/
 /.runtime/
 /.artifacts/
+/trusted-siblings.json
 *.log
 *.tmp
 .DS_Store

@@ -1,3 +1,4 @@
+<!-- context-meta owner:jitawangzi reviewedAt:2026-11-21 expiresAt:2027-04 -->
 # 工具链高级参考：失败现场、大型基线与交付导出
 
 > 本文件承接自 [project-tooling.md](project-tooling.md)，仅在排查引擎回归、执行审查导出/证据打包、调整大型输入预算或定位测试清理故障时按需加载。

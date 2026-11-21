@@ -48,8 +48,40 @@ if ($Mode -eq 'Syntax') {
     foreach ($relative in @('project-summary.md', 'coding-style.md', 'ai-coding.md', 'api-whitelist.md', 'client-test.md', 'config-rules.md', 'proto-rules.md', 'systems/condition-system.md')) {
         Assert-Contract (Test-Path -LiteralPath (Join-Path $aiRoot "context/$relative") -PathType Leaf) "Legacy knowledge missing: $relative"
     }
+    function Get-MarkdownAnchors([string]$FilePath, [hashtable]$Cache) {
+        if ($Cache.ContainsKey($FilePath)) { return $Cache[$FilePath] }
+        $anchors = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $counts = @{}
+        $inFence = $false
+        foreach ($line in [IO.File]::ReadLines($FilePath)) {
+            if ($line -match '^\s*(```|~~~)') { $inFence = -not $inFence; continue }
+            if ($inFence) { continue }
+            if ($line -match '^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$') {
+                $heading = $Matches[1]
+                # 去除行内 Markdown 链接与格式符号（保留标识符中的下划线 _），按 GFM 规则生成 slug
+                $heading = [regex]::Replace($heading, '\[([^\]]+)\]\([^)]+\)', '$1')
+                $heading = $heading -replace '[`*~]', ''
+                $slug = $heading.Trim().ToLowerInvariant()
+                $slug = [regex]::Replace($slug, '[^\p{L}\p{N}\s\-_]', '')
+                $slug = $slug -replace ' ', '-'
+                if ([string]::IsNullOrEmpty($slug)) { continue }
+                if ($counts.ContainsKey($slug)) {
+                    $counts[$slug]++
+                    [void]$anchors.Add("$slug-$($counts[$slug])")
+                } else {
+                    $counts[$slug] = 0
+                    [void]$anchors.Add($slug)
+                }
+            }
+        }
+        $Cache[$FilePath] = $anchors
+        return $anchors
+    }
+
+    $anchorCache = @{}
     $documents = @(
         Get-Item -LiteralPath (Join-Path $hostRoot 'README.md')
+        Get-ChildItem -LiteralPath (Join-Path $hostRoot 'doc') -File -Filter '*.md'
         Get-Item -LiteralPath (Join-Path $aiRoot 'README.md')
         Get-Item -LiteralPath (Join-Path $aiRoot 'specs/README.md')
         foreach ($directory in @('context', 'workflows', 'schemas')) {
@@ -57,14 +89,34 @@ if ($Mode -eq 'Syntax') {
         }
     )
     foreach ($document in $documents) {
-        $body = [IO.File]::ReadAllText($document.FullName)
-        # 只校验实际 Markdown 文件链接；代码内的占位命令不作为可点击路径。
-        foreach ($match in [regex]::Matches($body, '\[[^\]\r\n]+\]\(([^)\r\n]+)\)')) {
+        $lines = [IO.File]::ReadLines($document.FullName)
+        $inFence = $false
+        $cleanLines = [System.Collections.Generic.List[string]]::new()
+        foreach ($line in $lines) {
+            if ($line -match '^\s*(```|~~~)') { $inFence = -not $inFence; continue }
+            if (-not $inFence) { $cleanLines.Add($line) }
+        }
+        $body = $cleanLines -join "`n"
+        # 校验非代码块内的 Markdown 文件链接与同文档/跨文档 #anchor 锚点。
+        foreach ($match in [regex]::Matches($body, '(?<!!)\[[^\]\r\n]+\]\(([^)\r\n]+)\)')) {
             $link = $match.Groups[1].Value.Trim('<', '>')
-            if ($link -match '^[A-Za-z][A-Za-z0-9+.-]*:|^#') { continue }
-            $pathPart = [Uri]::UnescapeDataString(($link -split '#', 2)[0])
-            $target = Join-Path $document.DirectoryName $pathPart
-            Assert-Contract (Test-Path -LiteralPath $target) "Broken link in $($document.FullName): $link"
+            if ($link -match '^[A-Za-z][A-Za-z0-9+.-]*:') { continue }
+            $parts = $link -split '#', 2
+            $pathPart = [Uri]::UnescapeDataString($parts[0])
+            $anchorPart = if ($parts.Count -gt 1) { [Uri]::UnescapeDataString($parts[1]) } else { '' }
+
+            if ([string]::IsNullOrEmpty($pathPart)) {
+                $targetPath = $document.FullName
+            } else {
+                $targetPath = Join-Path $document.DirectoryName $pathPart
+                Assert-Contract (Test-Path -LiteralPath $targetPath) "Broken link in $($document.FullName): $link"
+                $targetPath = (Get-Item -LiteralPath $targetPath).FullName
+            }
+
+            if (-not [string]::IsNullOrEmpty($anchorPart) -and (Test-Path -LiteralPath $targetPath -PathType Leaf) -and $targetPath.EndsWith('.md', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $anchors = Get-MarkdownAnchors -FilePath $targetPath -Cache $anchorCache
+                Assert-Contract ($anchors.Contains($anchorPart)) "Broken anchor in $($document.FullName): $link"
+            }
         }
     }
     $style = [IO.File]::ReadAllText((Join-Path $aiRoot 'context/coding-style.md'))
