@@ -3,6 +3,7 @@
 /.runtime/
 /.artifacts/
 /trusted-siblings.json
+*.local.json
 *.log
 *.tmp
 .DS_Store

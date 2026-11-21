@@ -1,74 +1,90 @@
-<!-- context-meta owner:jitawangzi reviewedAt:2026-11-21 expiresAt:2027-04 -->
-# 游戏服务端排障与调试手册 (Debugging Playbook)
+<!-- context-meta owner:jitawangzi reviewedAt:2026-11-21 expiresAt:2027-05 -->
+# Bug 排查实战与调试手册 (Debugging Playbook)
 
-> **适用场景**：人工或 AI 排查 Bug、核查疑似误报、定位线上/本地异常。  
+> **适用场景**：人工或 AI（含 `.ai-sop/skills/bug-debugger/SKILL.md`）排查 Bug、核查疑似误报、定位线上/本地异常时按需加载。  
 > **红线**：排查阶段先做**只读分诊与根因溯源**，确认需要修改代码或埋点后再按 [AGENTS.md](../../AGENTS.md) 启动 SOP 任务（不要提前 `Task Start`，不要只修表面现象）。
 
 ---
 
-## 1. 第一现场：日志目录与常见观测点
+## 1. Phase 0 快速排雷导航与三类进程日志分布
 
-实时运行日志默认输出在宿主根 `logs/` 及进程目录（已 Git 忽略，不纳入 SOP 输入指纹）。**排查服务端 Bug 时务必先分清进程，切勿把模拟客户端的 `logs/*.log` 误当成主服日志**：
+### 1.1 先排非代码雷（配置 / 协议 / 运行目标）
+
+| 排查项 | 本项目入口位置 | 排雷要点 |
+|---|---|---|
+| **静态配置数据** | 外部源：`../configs/Server/output/`<br>运行 XML：`{protocol,game,login}/src/main/resources/xml/*.xml`<br>生成类：`protocol/src/main/java/cn/game/protocol/generated/{config,manager,enume,helper}/`<br>运行期查表：`ConfigQueryService`（`config.get`/`config.list`） | 先核对三处同步链路与 `-Dmetafolder`、表行 ID、数组分隔符（`\|` 与 `;`）、条件/权重/时间窗口；禁止手改生成类（详见 [config-rules.md](config-rules.md)）。 |
+| **错误码与协议映射** | `protocol/src/main/java/cn/game/protocol/manual/ErrorMsgEnum.java`<br>`PbProtocol.java`、`BaseHandler`（`CMD_INVOKERS`） | 业务失败统一 `player.fail(ErrorMsgEnum.xxx)` 抛 `LogicException`；核对是否为预期前置拦截、`protocol.bat` 是否已重跑、`Request + 1 = Response` 配对是否正确。 |
+| **运行目标与环境** | [runtime-verification.md](runtime-verification.md)、[verification-effects.md](verification-effects.md)、[doc/deployment_guide.md](../../doc/deployment_guide.md) | 常规排查不默认启服；联调先核对端口（ZK `2181`/Redis `6379`/Apollo `9888`/MySQL `3306`/Game `7011`/Login `9390`）、`hosts`（`127.0.0.1 test`）、`-Denv=dev`、`-DdefaultNetworkIp=127.0.0.1` 及 `runtimeIdentity <nonce>` 探针，防测错旧包。 |
+
+### 1.2 三类进程真实日志路径（切勿把模拟客户端 `logs/*.log` 误当主服日志）
 
 | 进程 | 实际日志路径 | 配置文件 | 优先排查场景 |
 |---|---|---|---|
-| **GameServer / CrossServer**（主服） | `${sys:SEVER_PATH}/logs/system/`：`stdout.log`、`system.log`、`net.log`、`warn.log`、`err.log`、`db.log`、`monitor.log`（按天归档在 `logs/system/<YYYY-MM-DD>/`）<br>`${sys:SEVER_PATH}/logs/game/` 与 `${sys:SEVER_PATH_CYLOG}`（业务/渠道统计流水，如 `login`/`recharge`/`money`/`item` 等） | `game/src/main/resources/log4j2.xml`<br>`util/.../Log4j2ApolloLoader.java` | 主服启动、协议报错、NPE、SQL/Redis/RPC 异常、配置加载失败、保存/容量告警、业务流水核对 |
-| **LoginServer**（登录服） | 控制台输出 + 启动目录 `init.log`（受 Apollo 动态配置覆盖时按远端配置为准） | `login/src/main/resources/log4j2.xml` | HTTP 登录、区服列表、账号校验与充值回调入口异常 |
+| **GameServer / CrossServer**（主服） | `${sys:SEVER_PATH}/logs/system/`：`stdout.log`、`system.log`、`net.log`、`warn.log`、`err.log`、`db.log`、`monitor.log`（按天归档在 `logs/system/<YYYY-MM-DD>/`）<br>`${sys:SEVER_PATH}/logs/game/` 与 `${sys:SEVER_PATH_CYLOG}`（业务流水：`money`/`recharge`/`shoptrade`/`activity`/`item`/`task` 等） | `game/src/main/resources/log4j2.xml`<br>`util/.../Log4j2ApolloLoader.java` | 主服启动、协议报错、NPE、SQL/Redis/RPC 异常、配置加载失败、保存/容量告警、业务扣费发奖对账 |
+| **LoginServer**（登录服） | 控制台输出 + 启动目录 `init.log`（Apollo 覆盖时以远端配置为准） | `login/src/main/resources/log4j2.xml` | HTTP 登录、区服列表、账号校验与充值回调入口异常 |
 | **simulationclient**（模拟客户端） | `logs/stdout.log`、`logs/err.log`、`logs/warn.log`、`logs/net.log`（按天归档在 `logs/<YYYY-MM-DD>/`） | `simulationclient/log4j2.xml` | 模拟客户端协议场景脚本执行、压测与客户端侧断言失败 |
 
-> 启动期日志级别、Apollo 动态覆盖及各服务端口见 [doc/deployment_guide.md](../../doc/deployment_guide.md)。
-
 ---
 
-## 2. 本服白盒与交互调试工具（非生产环境优先使用）
-
-当前工程已内置完整的 GM 与协议白盒调试底座，排查功能 Bug 时**优先用真实运行时观测，不要靠猜**：
+## 2. 本服白盒与交互调试工具（非生产优先）
 
 1. **GM Web 工作台（`GameServer` 内置 `vertx-web` + `gm-console/panels/`）**：
-   - 自动发现全服功能模块、Proto 协议目录（`proto.catalog`）、错误码字典（`ErrorMsgEnum`）与配置表查询（`config.tables` / `config.list` / `config.get`）。
-   - 支持**动态协议表单发包**、捕获主 `Response` + 伴随 `Push`、查看单次请求耗时/异常/资源流水（`withTrace=true`）以及执行前后模块状态差异（`withDiff=true`）。
-   - 磁盘热重载面板位于 `gm-console/panels/`（示例：`quick-test-panel.html`）。
+   - 自动发现全服功能模块、`proto.catalog`（协议与错误码字典）、`config.*`（配置表查询）；
+   - 支持动态协议表单发包，捕获主 `Response` + 伴随 `Push`、请求级 Trace（`withTrace=true`）与前后模块字段 Diff（`withDiff=true`）；
+   - 对应底层观测服务：`RequestTraceService`、`PlayerInspectService`、`ProtocolSimulationService`（`game/.../net/game/gm/`）。
 2. **结构化测试协议 `0x6f` 与核心白盒指令**：
-   - `gm.inspect`：只读抓取在线玩家指定模块真实内存状态（`OPS_SAFE`，在目标玩家虚拟线程内采集）。
-   - `gm.trace.*`：录制非生产业务请求 Trace、资源流水与 ERROR 日志。
-   - `time.*`：非生产跨平台虚拟时钟（`DateUtil` / 跨天 / 跨周 / 跨月结算测试），排查周期重置类 Bug 必用。
-   - `gm.snapshot.*` / `gm.flushAndColdReload`：非生产玩家快照与强制落盘冷重载，用于复现“内存态正常、重登后丢失”类持久化 Bug。
-   - `gm.rng.*`（`gm.rng.seed` / `gm.rng.sequence` / `gm.rng.status` / `gm.rng.reset`）：非生产可控随机，用于复现概率掉落/抽卡类 Bug。
+   - `gm.inspect`：只读抓取在线玩家指定模块真实内存状态（`OPS_SAFE`，在目标玩家虚拟线程内采集）；
+   - `gm.trace.*`：录制非生产业务请求 Trace、资源流水净变化与 ERROR 日志；
+   - `time.*`：非生产跨平台虚拟时钟（`DateUtil` / 跨天 / 跨周 / 跨月结算测试）；
+   - `gm.snapshot.*` / `gm.flushAndColdReload`：非生产玩家快照与强制落盘冷重载（复现“内存正常、重登丢失”类持久化 Bug）；
+   - `gm.rng.*`（`gm.rng.seed` / `gm.rng.sequence` / `gm.rng.status` / `gm.rng.reset`）：非生产可控随机（复现概率掉落/抽卡类 Bug）；
    - *安全边界*：生产模式（`RunMode.PRODUCTION`）硬禁用 `DEV_TEST_ONLY` 与 `0x6f`，只读排查仅限 `OPS_SAFE`。
-3. **模拟客户端 & 模块双轨验收**：
-   - 协议级复现脚本：`run_client.ps1 -TestClass <完整类名>`，规则见 [client-test.md](client-test.md)。
-   - 模块级批量契约与全量配表矩阵扫描：调用 `module-acceptance-tester` Skill 或运行 Profile `module-acceptance-platform`。
-   - 联调运行实例身份核对（防连错进程/旧代码）：见 [runtime-verification.md](runtime-verification.md)（探针 `runtimeIdentity <nonce>`）。
+3. **模块双轨验收**：模块级契约与全量配表矩阵扫描可调用 `module-acceptance-tester` Skill 或运行 Profile `module-acceptance-platform`。
 
 ---
 
-## 3. 四类高频问题快速分诊路径
+## 3. 最小复现路径分级（按成本由低到高）
 
-### 3.1 服务启动失败 / 中间件连不上
-1. 先核对本地端口监听（见 [doc/deployment_guide.md](../../doc/deployment_guide.md) 第六节）：ZK `2181`、Redis `6379`、Apollo `9888`（`http://localhost:9888/health`）、ZKUI `9990`、MySQL `3306`、Game `7011`、Login `9390`。
-2. 检查 Windows `hosts` 是否配置 `127.0.0.1 test`；JVM 参数是否误用了 `-Denv=local`（应为 `-Denv=dev` + `-Ddev_meta=http://test:9888`）。
-3. 多网卡（VPN/VMware）导致 Vert.x 集群绑定异常时，确认已传 `-DdefaultNetworkIp=127.0.0.1`。
+### Level 1（首选）：进程内 JUnit 5 + 轻量夹具（秒级，不启服）
 
-### 3.2 登录异常 / 协议收不到或回包错误码异常
-1. 区分**物理节点 ID**（`ServerContext.getServerId()`）、**逻辑区服 ID**（`VirtualServerRegistry`，ZK 路径 `/server/login/game/virtual-servers`）、**账号 UID** 与 **`playerId`**，不要混用（详见 [doc/01_系统架构设计全景文档.md](../../doc/01_系统架构设计全景文档.md) 第 1.3 节）。
-2. 检查 `protocol/` 独立仓库与 `PbProtocol.java` 是否已重新运行 `protocol.bat` 生成；确认 `Request + 1 = Response` 配对与 `BaseHandler` 注册（`CMD_INVOKERS`）。
-3. 查看业务错误码：用 `proto.catalog` 或直接查 `protocol/.../ErrorMsgEnum.java`，定位对应 `player.fail(ErrorMsgEnum.xxx)` 抛出点。
+- **执行命令（关键坑）**：根 `pom.xml` 默认 `<skipTests>true</skipTests>`，且本机 Maven 默认 Surefire 2.12.4 **不跑 JUnit 5**，切勿直接运行裸 `mvn test`。统一使用：
+  ```powershell
+  pwsh -NoProfile -File ./.ai-workspace/scripts/run-java-tests.ps1 -Project game -Test <测试类名>
+  ```
+  （正式修复在 SOP 任务内通过 `Task Run` 留证，Profile 见 [project-tooling.md](project-tooling.md)。）
+- **Mock 基础设施现状**：依赖 JUnit 5 (`5.11.3`) + `awaitility`，**未引入 Mockito**。遇到静态单例（`ServerContext`、`PlayerManager`、`*Manager.instance()`）时，测试类必须标 `@Isolated`，用轻量手写替身或反射注入，并在 `@AfterEach`/`@AfterAll`/`AutoCloseable.close()` 中**还原原引用**。
+- **可直接照抄的 4 个标杆样板**：
+  1. **单模块内存状态/重置**：`game/src/test/java/cn/game/games/net/game/module/PlayerModuleResetTest.java`（`ClassManager.getInstance().init()` + `new Player(PlayerData)` + `player.initModule(...)` + `RunMode.DEV`）
+  2. **真实协议编解码 + 邮箱 + Handler 闭环（无 DB）**：`game/src/test/java/cn/game/games/net/game/module/mail/MailFilterTest.java` 与 `MailFilterFixture.java`
+  3. **合成配置表 + 快照冷重载验证**：`game/src/test/java/cn/game/games/net/game/helper/FirstChargeCalibrationTest.java`（动态 DOM 构造 `*Config` 注入 `*Manager.instance()` + `CborSnappyUtil.decompress` 验落盘新对象）
+  4. **虚拟线程捕获 / Trace / 虚拟时钟与可控随机**：`ProtocolSimulationServiceTest.java`（`VirtualGameClient`）、`RequestTraceServiceTest.java`、`util/.../DateUtilVirtualClockTest.java`、`util/.../RndControlledRandomTest.java`
 
-### 3.3 配表不生效 / 数值不对 / NPE
-1. 核对三处同步链路：外部真源 `../configs/Server/output/` → `protocol/src/main/java/cn/game/protocol/generated/{config,enume,helper,manager}/` → XML 同步至 `protocol/`、`game/`、`login/` 的 `src/main/resources/xml/`。
-2. 核对 JVM 参数 `-Dmetafolder=D:\work-all\game\configs\Server` 与配表规则 [config-rules.md](config-rules.md)、`../dic_generate/配置表AI编码规范.md`。
-3. 在线直接调用 `config.get` / `config.list` 验证进程实际加载的配表内容，区分“表没导进去”和“代码读错字段”。
+### Level 2：模拟客户端黑盒 + 白盒一体化测试（需完整协议/模块联动或真实落库时）
 
-### 3.4 玩家状态丢失 / 并发脏数据 / 充值与保存异常
-1. **先查线程归属**：确认是否越过玩家邮箱（`IdVirtualThreadProcessor`）直接改了玩家状态，或误用 `CompletableFuture` 回调链（未用 `AsyncUtils.await(...)`）导致切出玩家串行队列。
-2. **先查保存链路**：确认新增字段是否挂入 `BasePlayerModule` 序列化集合或独立 `DbEntity`；用 `gm.flushAndColdReload` 或定向测试 Profile `state-integrity` 验证冷重载一致性（参考 [state-integrity-testing.md](state-integrity-testing.md)）。
-3. **充值/订单异常（高危红线）**：严禁擅自删除热订单、重放发货或解除 `PAYMENT_FROZEN` / `UNKNOWN` 隔离。使用只读离线核对工具 `payment-evidence.ps1` / `payment-cleanup-preflight.ps1` 并对照 [doc/payment-process-recovery.md](../../doc/payment-process-recovery.md) 与 [doc/01_系统架构设计全景文档.md](../../doc/01_系统架构设计全景文档.md) 支付章节处置。
+- 继承 `ClientBaseScenarioTest`（`simulationclient/src/main/java/cn/game/simulation/test/ai/`），执行 `./run_client.ps1 -TestClass <完整类名>`；完整 API 见 [client-test.md](client-test.md)。
+- 优先复用 `WhiteBoxTestKit`：`resetModules` / `saveSnapshot` / `setVirtualTimeOffset` / `seedRng` / `sendAndTrace`（自动附服务端错误与资源流水净额）/ `inspectModuleField` / `flushAndColdReload()`。
+
+### Level 3：真实 DB / 进程恢复测试（仅涉真实 MySQL / ZK / 强杀恢复）
+
+- 参考 `*DatabaseIT.java`、[state-integrity-testing.md](state-integrity-testing.md) 与 [doc/payment-process-recovery.md](../../doc/payment-process-recovery.md)，不作为常规业务 Bug 的默认入口。
 
 ---
 
-## 4. 根因溯源四步法（防“只修表面”）
+## 4. 本项目高频“修表面漏根因”陷阱与高危红线
 
-1. **定性分流**：先判定是 **A 可稳定复现代码缺陷**、**B 并发/环境/状态依赖难复现问题**，还是 **C 非代码误报**（配表未同步、进程跑的是旧制品、测试数据前置不满足）。
-2. **反向溯源**：从报错日志/错误码一路追到真实状态写入点与事件源头，核对 `coding-style.md`、`business-logic-pattern.md` 及对应 `business-patterns/` 专题。
-3. **先证后改**：修复前先构造最小可复现单测或模拟客户端场景（RED），修改后再跑 `compile` + 定向回归（GREEN）。
-4. **验证事实**：绝不以 `mvn compile`（默认 `skipTests=true`）或旧日志当成已验证；按 [project-tooling.md](project-tooling.md) 用 `Task Run` 留存真实测试证据。
+完整已知缺陷模式库见 [logic-audit-game-server.md](logic-audit-game-server.md)，排查与修复时重点防以下 5 类误区：
+
+1. **虚拟线程 + 异步窗口重入**：同 `playerId` 在邮箱（`IdVirtualThreadProcessor`）内串行，但跨越 `AsyncUtils.await(...)`、误用 `CompletableFuture` 回调链、跨玩家或跨节点回调时状态可能已变；禁止只在下游加去重标记，必须追查资格校验与状态占用的原子顺序。
+2. **周期重置污染与遗漏**：检查 `LIMIT_STATE_POISONING`（先覆盖日期再递增次数）与 `LAZY_RESET_UNPERSISTED`（只在查询入口 reset，玩家未打开界面直接发写请求就出错）；时间一律走 `DateUtil`（禁用 `System`）并核对 `00:00` vs `05:00` 跨天口径。
+3. **内存幻觉（`IN_MEMORY_TEST_MIRAGE`）**：常规 `BasePlayerModule` 走定时全量快照，独立表（如邮件）走 `DbEntity` 显式写入；`synchronizeDataFromServer()` 只是协议刷新，验证落库类 Bug 必须走保存完成 → 新对象冷重载（单测看 `CborSnappyUtil.decompress`，联调看 `flushAndColdReload()`）。
+4. **源头写入 vs 存量脏存档**：修完写入源头后，单独评估线上老玩家已有脏数据在加载/重登重建（`initFromDb` / 模块生命周期）时是否需要显式兼容兜底；登录链路同时注意区分物理节点 ID、逻辑区服 ID（`VirtualServerRegistry`）、账号 UID 与 `playerId`（见 [doc/01_系统架构设计全景文档.md](../../doc/01_系统架构设计全景文档.md) 第 1.3 节）。
+5. **充值/订单异常（高危红线）**：严禁擅自删除热订单、重放发货或解除 `PAYMENT_FROZEN` / `UNKNOWN` 隔离。使用只读离线核对工具 `payment-evidence.ps1` / `payment-cleanup-preflight.ps1` 并对照 [doc/payment-process-recovery.md](../../doc/payment-process-recovery.md) 与 [doc/01_系统架构设计全景文档.md](../../doc/01_系统架构设计全景文档.md) 支付章节处置。
+
+---
+
+## 5. B 类（难复现）《精准取证清单》索取项参考
+
+当 Bug 归类为 B 类（`L3 推理待证`）时，向提单人/运维索取证据尽量精确到以下维度：
+- **定位标识**：`playerId`、`serverId`（区分物理节点 ID 与逻辑区服 ID）、触发时间窗口（精确到分钟）、客户端报错码（对照 `ErrorMsgEnum`）与触发协议名/按钮操作顺序。
+- **日志片段**：对应时段的 `logs/system/{err,warn,stdout,net}.log`（及 `LoginServer` `init.log`）和受影响业务流水（如 `logs/game/{money,recharge,activity,item,task}`）。
+- **数据与版本快照**：对应配置 XML 版本/行内容，及受影响玩家相关模块/独立表（如 `t_player_data` 模块快照或 `mail` 等表）的关键字段值。

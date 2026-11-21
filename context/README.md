@@ -21,7 +21,7 @@
 | **系统架构全景**（节点拓扑、登录重连、邮箱线程、RPC、存储边界） | [doc/01_系统架构设计全景文档.md](../../doc/01_系统架构设计全景文档.md) |
 | **研发流程完整手册**（配表/协议/业务端到端开发示例） | [doc/02_开发流程与研发规范手册.md](../../doc/02_开发流程与研发规范手册.md) |
 | **Windows 本地部署与运维**（中间件、MySQL、Apollo、服务启停） | [doc/deployment_guide.md](../../doc/deployment_guide.md) |
-| **Bug 分诊、日志定位与 GM 工作台排障** | [debugging-playbook.md](debugging-playbook.md) |
+| **独立 Bug 排查、疑似误报分诊、日志定位与最小复现** | [debugging-playbook.md](debugging-playbook.md) |
 | 实现 Handler / Module、事件、GM、物品与资源操作 | [ai-coding.md](ai-coding.md)、[api-whitelist.md](api-whitelist.md) |
 | Protobuf 协议定义、编号规则与兼容 | [proto-rules.md](proto-rules.md) |
 | 静态配表结构、生成类与校验规则 | [config-rules.md](config-rules.md) |
