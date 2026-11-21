@@ -2,6 +2,7 @@
 /specs/
 /.runtime/
 /.artifacts/
+*.local.json
 *.log
 *.tmp
 .DS_Store
