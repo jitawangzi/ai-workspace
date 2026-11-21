@@ -79,13 +79,21 @@ if ($Mode -eq 'Syntax') {
     }
 
     $anchorCache = @{}
+    $hostParent = Split-Path -Parent $hostRoot
+    $optionalSiblingRoots = @(
+        [IO.Path]::GetFullPath((Join-Path $hostParent 'dic_generate'))
+        [IO.Path]::GetFullPath((Join-Path $hostParent 'configs'))
+    )
     $documents = @(
         Get-Item -LiteralPath (Join-Path $hostRoot 'README.md')
         Get-ChildItem -LiteralPath (Join-Path $hostRoot 'doc') -File -Filter '*.md'
         Get-Item -LiteralPath (Join-Path $aiRoot 'README.md')
         Get-Item -LiteralPath (Join-Path $aiRoot 'specs/README.md')
-        foreach ($directory in @('context', 'workflows', 'schemas')) {
-            Get-ChildItem -LiteralPath (Join-Path $aiRoot $directory) -Recurse -File -Filter '*.md'
+        foreach ($directory in @('context', 'workflows', 'schemas', 'skills')) {
+            $dirPath = Join-Path $aiRoot $directory
+            if (Test-Path -LiteralPath $dirPath -PathType Container) {
+                Get-ChildItem -LiteralPath $dirPath -Recurse -File -Filter '*.md'
+            }
         }
     )
     foreach ($document in $documents) {
@@ -94,7 +102,10 @@ if ($Mode -eq 'Syntax') {
         $cleanLines = [System.Collections.Generic.List[string]]::new()
         foreach ($line in $lines) {
             if ($line -match '^\s*(```|~~~)') { $inFence = -not $inFence; continue }
-            if (-not $inFence) { $cleanLines.Add($line) }
+            if (-not $inFence) {
+                # 剔除行内反引号代码，避免正文举例的 Markdown 语法触发误报
+                $cleanLines.Add([regex]::Replace($line, '`+[^`]*`+', ''))
+            }
         }
         $body = $cleanLines -join "`n"
         # 校验非代码块内的 Markdown 文件链接与同文档/跨文档 #anchor 锚点。
@@ -108,9 +119,24 @@ if ($Mode -eq 'Syntax') {
             if ([string]::IsNullOrEmpty($pathPart)) {
                 $targetPath = $document.FullName
             } else {
-                $targetPath = Join-Path $document.DirectoryName $pathPart
-                Assert-Contract (Test-Path -LiteralPath $targetPath) "Broken link in $($document.FullName): $link"
-                $targetPath = (Get-Item -LiteralPath $targetPath).FullName
+                $candidatePath = [IO.Path]::GetFullPath((Join-Path $document.DirectoryName $pathPart))
+                if (-not (Test-Path -LiteralPath $candidatePath)) {
+                    $isOptionalSibling = $false
+                    foreach ($sibRoot in $optionalSiblingRoots) {
+                        $sibPrefix = $sibRoot.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+                        if ($candidatePath.Equals($sibRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+                            $candidatePath.StartsWith($sibPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                            $isOptionalSibling = $true
+                            break
+                        }
+                    }
+                    if ($isOptionalSibling) {
+                        Write-Output "INFO: skipped absent external sibling link in $($document.Name): $link"
+                        continue
+                    }
+                }
+                Assert-Contract (Test-Path -LiteralPath $candidatePath) "Broken link in $($document.FullName): $link"
+                $targetPath = (Get-Item -LiteralPath $candidatePath).FullName
             }
 
             if (-not [string]::IsNullOrEmpty($anchorPart) -and (Test-Path -LiteralPath $targetPath -PathType Leaf) -and $targetPath.EndsWith('.md', [System.StringComparison]::OrdinalIgnoreCase)) {
