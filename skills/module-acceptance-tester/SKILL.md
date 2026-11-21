@@ -68,83 +68,99 @@ description: 模块级双轨自动化验收与多态配表矩阵扫描测试专�
 
 ### Step 2：编写轨道一「🧪 功能链路契约验收（`CONTRACT`）」
 
-在套件的 `runContractCases(AcceptanceContext ctx)` 中，使用 `InProcessAcceptanceKit` 针对核心业务规则与状态机边界编写契约用例：
+在套件的 `runContractCases(AcceptanceContext ctx)` 中，首先调用 `InProcessAcceptanceKit.ensureHandlerRegistered(MODULE_ID, XxxHandler::new)` 确保模块协议处理器已注册，然后通过 `ctx.executeContractCase(caseId, title, () -> { ... })` 针对核心业务规则与状态机边界编写契约用例：
 
 1. **必须覆盖的契约切面**：
-   - **正向主链路（Happy Path）**：准备精确资源与前置状态 $\to$ 发送正式请求 $\to$ 断言 `errorCode == 0`、服务端零 `ERROR` 日志（`assertNoServerErrors`）、资源扣除与奖励发放流水净额匹配（`assertResourceDelta`）、模块内存状态变更正确（`inspectModuleField`）。
-   - **资源/条件不足拦截（Negative Guard）**：在清零货币或未达标状态下发包 $\to$ 断言返回预期非零错误码（如 `ErrorMsgEnum.resource_not_enough` 或 `condition_check_error`）且状态未被脏改。
+   - **正向主链路（Happy Path）**：调用 `SandboxResetter.resetModules(player, ...)` 重置模块 $\to$ 准备精确资源与前置状态 $\to$ 调用静态方法 `InProcessAcceptanceKit.invokeProto(player.getPlayerId(), PbProtocol.XxxRequest, payloadMap)` 发送正式请求 $\to$ 断言 `InProcessAcceptanceKit.assertProtocolSuccess(res)`（内含 `errorCode == 0` 与 `trace.errorEvents` 为空校验）、资源扣除与奖励发放流水净额匹配（`InProcessAcceptanceKit.assertResourceDelta(res, configId, expectedSignedDelta)` 或 `assertAnyRewardGranted(res)`）、模块内存状态变更正确（`InProcessAcceptanceKit.inspectModuleField(player, moduleName, dotPath)`）。
+   - **资源/条件不足拦截（Negative Guard）**：在清零货币或未达标状态下发包 $\to$ 调用 `InProcessAcceptanceKit.assertErrorCode(res, ErrorMsgEnum.xxx.getId())` 断言返回预期非零错误码（如 `resource_not_enough` 或 `condition_check_error`）且状态未被脏改。
    - **限购/冷却/上限拦截（Limit Guard）**：连续购买或操作直至达到配表上限（如 `ShopItemQuota`），再发第 $N+1$ 次请求 $\to$ 断言返回上限错误码（如 `shop_item_buy_count_max` / `times_limit`）。
-   - **跨周期重置自愈（Cross-Day / Reset）**：在达到每日上限后，触发跨天刷新（如 `PlayerHelper.refreshDay` 或虚拟时钟偏移）$\to$ 验证计数归零并可再次成功执行。
-   - **幂等与防重入（Idempotency）**：对一次性购买/领取协议（如月卡、章节礼包、基金购买、已领奖励）重复发送相同请求 $\to$ 断言第二次请求被 `repeat_request` / `month_card_repeated` / `shop_gift_repeated` 拦截。
+   - **跨周期重置自愈（Cross-Day / Reset）**：在达到每日上限后，触发跨天刷新（如 `player.getShopModule().onDayReset()` 或 `PlayerHelper.refreshDay`）$\to$ 验证计数归零并可再次成功执行。
+   - **幂等与防重入（Idempotency）**：对一次性购买/领取协议（如月卡、章节礼包、基金通行证购买、已领奖励）重复发送相同请求 $\to$ 断言第二次请求被 `repeat_request` / `month_card_repeated` / `shop_gift_repeated` 拦截。
 2. **禁止项**：
-   - 在验证“余额不足/条件不满足/达到上限”的反例契约用例中，**严禁调用破障器自动补钱或清零限购**！
+   - 在验证“余额不足/条件不满足/达到上限”的反例契约用例中，**严禁调用破障器自动补钱或开启条件豁免**！
+   - 切勿对第一次正向前置操作使用 `if (code == 0)` 包裹第二次重复拦截断言（防止因前置缺钱失败而静默跳过断言造成假阳性）。
 
 ---
 
 ### Step 3：编写轨道二「📊 多态策略 × 配表全集矩阵扫描（`MATRIX_SCAN`）」
 
-在套件的 `runMatrixScan(AcceptanceContext ctx)` 中，遍历目标模块关联配表的 **100% 正式配置行**（受 `ctx.getMaxMatrixRows()` 安全上限保护）：
+在套件的 `runMatrixScan(AcceptanceContext ctx)` 中，遍历目标模块关联配表的 **100% 正式配置行**（`ctx.executeMatrixRow` 内部已自动封装 `shouldRunCase(caseId)` 单条过滤、`maxMatrixRows` 行数上限与 `ctx.isCircuitBroken()` 连续 3 次夹具失败熔断器，外层循环只需检查 `if (ctx.isCircuitBroken()) break;`）：
 
-1. **单条配表五阶段沙盒微环标准模板**：
-   每一行配表记录必须通过 `ctx.executeMatrixRow(caseId, tableName, configId, branchKey, microLoop)` 在独立沙盒微环内执行：
-   - **阶段 1 `ARRANGE`（造数与破障）**：
-     - 调用 `SandboxResetter.resetModules(player, ...)` 重置被测模块与背包/货币模块，确保当前行与第 1 行处于完全一致的初始环境；
-     - 调用 `ConditionSatisfier.satisfy(player, conditionIds...)` 自动满足等级、VIP、主线关卡、功能开启及特殊上下文（如公会商店虚拟 `guildId`）；
+1. **单条配表三段式回调微环标准模板**：
+   每一行配表记录必须通过 `ctx.executeMatrixRow(caseId, configTable, configId, branchKey, arrangeAndPreCheck, sutAct, sutVerify)` 在独立沙盒微环内执行：
+   - **回调 1 `arrangeAndPreCheck`（阶段 1 造数破障 + 阶段 2 前置自检，`Runnable`）**：
+     - 调用 `SandboxResetter.resetModules(player, "item", "currency", ...)` 重置被测模块与关联资源模块（支持传不带 `Module` 后缀的短名称或类简单名），确保当前行与第 1 行处于完全一致的初始环境；
+     - 调用 `ConditionSatisfier.satisfyConditions(player, config.UnlockCondition, config.BuyCondition)`（支持传入 `int[]...` 或 `int...` 条件 ID，内部自动拉满等级/VIP/关卡、开启条件豁免并在遇到公会条件时自动设置虚拟 `guildId`）；
      - 若业务要求目标条目先存在于玩家模块容器中（如商店购买要求 `ShopModule` 持有该 `ShopItem`，道具使用/分解要求背包持有该 `Item`），显式注入目标实例并清零已购买/已使用计数；
-     - 调用 `CostProvisioner.provision(player, ...)` 自动补齐本行配置所需的普通资源，或为 RMB 直购（`costType == 2`）自动注入足额 **`Asset.Vouchers`（代金券，ID=`100023`）**。
-   - **阶段 2 `PRE_CHECK`（前置自检）**：
-     - 校验所需道具/货币已在沙盒玩家身上就绪；若未就绪则抛出 `AcceptanceFixtureException`（引擎自动归因为 `FIXTURE_DEFECT`，连续 3 次触发熔断，绝不混淆为业务 Bug）。
-   - **阶段 3 `SUT_ACT`（正式协议发包）**：
-     - 调用 `kit.invokeProto(playerId, msgId, payloadMap)` 走真实 `Dispatcher` + `Handler` 执行，全程捕获 Response、Push、Trace `resourceEvents`/`errorEvents` 与模块 `Diff`。
-   - **阶段 4 `SUT_VERIFY`（语义守恒断言）**：
-     - 校验响应 `ok == true` 且 `errorCode == 0`（否则归因为 `SUT_FAILURE`）；
-     - 校验 `trace.errorEvents` 为空（拦截被 try-catch 吞掉但打了 `log.error` 的隐蔽异常）；
-     - 校验资源消耗与产出流水净额跟配表字段一致（如分解道具获得的资源 ID 与数量等于 `item.Decompose[0]` / `item.Decompose[1]`；若不一致则归因为 `ASSERTION_FAILED`）。
-   - **阶段 5 `TEARDOWN`（强制复位）**：
-     - 由微环 `finally` 块自动重置沙盒状态、关闭 Trace 并恢复随机源/时钟偏移。
+     - 调用 `CostProvisioner` 静态方法自动补齐本行配置所需的普通资源或 **`Asset.Vouchers`（代金券，ID=`100023`）**：
+       - 商店购买参数（`[costType, itemId, count]`）：`CostProvisioner.provisionShopPayment(player, config.PurchaseParameter, 1)`；
+       - 二维资源数组（`int[][]`）：`CostProvisioner.provisionArrayCost(player, config.Cost, 1)`；
+       - 一维资源数组（`[id, count]`）：`CostProvisioner.provisionFlatCost(player, config.Cost, 1)`；
+       - 宝箱抽卡防免费券污染：`CostProvisioner.clearCompetingFreeTicketIfNecessary(player, shopBoxConfig, costType)`；
+     - **前置自检**：校验所需前置道具/状态已在沙盒玩家身上就绪；若未就绪则抛出 `new AcceptanceFixtureException("...", false)`（引擎自动归因为 `FIXTURE_DEFECT` 或 `PROVISION_FAILED`，连续 3 次触发熔断，绝不混淆为业务 Bug）。
+   - **回调 2 `sutAct`（阶段 3 正式协议发包，`Supplier<Map<String, Object>>`）**：
+     - 调用并返回 `InProcessAcceptanceKit.invokeProto(player.getPlayerId(), PbProtocol.XxxRequest, payloadMap)`，走真实 `Dispatcher` + `Handler` 执行，全程捕获 Response、Push、Trace `resourceEvents`/`errorEvents` 与模块 `Diff`。
+   - **回调 3 `sutVerify`（阶段 4 语义守恒断言，`Consumer<Map<String, Object>>`）**：
+     - 调用 `InProcessAcceptanceKit.assertProtocolSuccess(result)` 校验响应 `errorCode == 0` 且 `trace.errorEvents` 为空；
+     - 校验资源消耗与产出流水净额或模块业务状态跟配表字段一致（如分解道具获得的资源 ID 与数量等于 `item.Decompose[0]` / `item.Decompose[1]` 时调用 `InProcessAcceptanceKit.assertResourceDelta(result, item.Decompose[0], item.Decompose[1])`；若不一致则抛出 `AssertionError`，引擎自动归因为 `ASSERTION_FAILED`）。
+   - **阶段 5 `TEARDOWN`（引擎自动强制复位）**：
+     - 由 `AcceptanceContext` 的 `finally` 块自动执行 `SandboxExecutionGuard.enableConditionBypass(playerId, false)`、`ConditionSatisfier.setSandboxGuildContext(player, 0L)` 与 `Rnd.resetControlledRandom()`，防止跨用例状态泄漏。
 
 2. **多态分支命中登记**：
-   - 每行配表执行时必须传入其所属的 `branchKey`（如 `"ItemUse:" + item.ItemType` 或 `"ShopType:" + shopConfig.Type`）；
-   - 引擎自动汇总每个 `branchKey` 的扫描行数与通过率，对命中数为 `0` 的声明分支自动生成 `UNCOVERED_BRANCH` 告警。
-
-3. **支持单条 `caseId` 定向重试**：
-   - 当 `ctx.hasTargetCaseFilter()` 为 `true` 时，仅执行匹配 `ctx.matchesCase(caseId)` 的那一条契约用例或那一行配表，其余直接跳过，确保 GM 工作台点击「🔄 单条重试」时在几毫秒内精准返回该条结果。
+   - 每行配表执行时必须传入其所属的 `branchKey`（必须与 `getDeclaredBranches()` 中声明的分支键一致）；
+   - 引擎自动汇总每个 `branchKey` 的扫描行数与通过率，对命中数为 `0` 的声明分支自动生成 `UNCOVERED_BRANCH:<branchKey>` 告警。
 
 ---
 
 ### Step 4：注册、编译与自检验证闭环（Verification）
 
-1. **Spring 与引擎双重可发现**：
-   - 验收套件类标注 `@Component`，实现 `ModuleAcceptanceSuite` 接口；
-   - 在 `ModuleAcceptanceEngine#registerBuiltInSuites()` 中登记兜底实例，保证无论是否启动完整 Spring 容器均可直接发包运行。
+1. **在验收引擎中注册套件**：
+   - 新套件实现 `ModuleAcceptanceSuite` 接口，放置在 `game/src/main/java/cn/game/games/net/game/gm/acceptance/suites/` 目录；
+   - 在 `ModuleAcceptanceEngine` 私有构造器（`game/src/main/java/cn/game/games/net/game/gm/acceptance/ModuleAcceptanceEngine.java`）中调用 `registerSuite(new XxxModuleAcceptanceSuite())` 完成内置注册（使 GM 网页工作台与离线 JUnit 均可直接发现并调用）。
 2. **编写/更新 JUnit 自动化测试**：
-   - 在 `game/src/test/java/cn/game/games/net/game/gm/acceptance/` 下编写或扩展单元测试，分别以 `CONTRACT`、`MATRIX_SCAN` 与单条 `caseId` 重试模式运行新套件；
-   - 断言套件本身无 `PROVISION_FAILED` / `FIXTURE_DEFECT` 夹具错误，且能完整输出 `ModuleAcceptanceReport`。
+   - 在 `game/src/test/java/cn/game/games/net/game/gm/acceptance/ModuleAcceptancePlatformTest.java`（或对应模块验收测试类）中补充对该 `moduleId` 的 `CONTRACT`、`MATRIX_SCAN` 与单条 `caseId` 重试断言；
+   - 通过 `Task Run -Profile compile`、`compile-tests` 与 `module-acceptance-platform`（或定向 Java 测试命令）验证套件零夹具故障（`provisionFailures == 0 && fixtureDefects == 0`），并能完整输出 `ModuleAcceptanceReport`。
 3. **向用户输出结构化验收总结**：
    - 汇总：① 关联规格文档核对结论（含 `[SPEC_CODE_MISMATCH]` 与 `[DOC_DRIFT_WARNING]` 清单）；② 轨道一契约用例覆盖列表；③ 轨道二配表扫描总行数、多态分支覆盖率及实测发现的真实配表/代码缺陷明细。
 
 ---
 
-## 四、 标准套件代码骨架示例
+## 四、 黄金参考范本与标准套件代码骨架
+
+编写新模块验收套件前，优先参考已落地的两个标杆套件：
+- 道具模块标杆：`game/src/main/java/cn/game/games/net/game/gm/acceptance/suites/ItemModuleAcceptanceSuite.java`
+- 商店模块标杆：`game/src/main/java/cn/game/games/net/game/gm/acceptance/suites/ShopModuleAcceptanceSuite.java`
+
+标准套件代码骨架如下：
 
 ```java
 package cn.game.games.net.game.gm.acceptance.suites;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import org.springframework.stereotype.Component;
+
 import cn.game.games.cache.entity.Player;
 import cn.game.games.net.game.gm.acceptance.*;
+import cn.game.games.net.game.helper.PlayerHelper;
+import cn.game.games.net.game.module.item.ItemHandler;
+import cn.game.protocol.generated.config.ItemConfig;
+import cn.game.protocol.generated.enume.ItemUse;
+import cn.game.protocol.generated.manager.ItemManager;
+import cn.game.protocol.manual.ErrorMsgEnum;
+import cn.game.protocol.manual.OpType;
+import cn.game.protocol.protobuf.PbProtocol;
 
 /**
  * 示例模块双轨自动化验收套件
  */
-@Component
 public class ExampleModuleAcceptanceSuite implements ModuleAcceptanceSuite {
+
+    private static final int MODULE_ID = 0x0b; // 对应 //@MessageModule 十六进制模块号
 
     @Override
     public int getModuleId() {
-        return 0x0b; // 对应 //@MessageModule 十六进制模块号
+        return MODULE_ID;
     }
 
     @Override
@@ -159,7 +175,7 @@ public class ExampleModuleAcceptanceSuite implements ModuleAcceptanceSuite {
 
     @Override
     public List<String> getDeclaredBranches() {
-        return List.of("ITEM_USE_TYPE_4", "ITEM_USE_TYPE_7", "ITEM_USE_TYPE_13", "ITEM_DECOMPOSE_SELL");
+        return List.of("ITEM_USE_TYPE_4_HeroChoose", "ITEM_SELL_DECOMPOSE");
     }
 
     @Override
@@ -168,22 +184,60 @@ public class ExampleModuleAcceptanceSuite implements ModuleAcceptanceSuite {
     }
 
     @Override
-    public void runContractCases(AcceptanceContext ctx) {
+    public void runContractCases(AcceptanceContext ctx) throws Exception {
+        InProcessAcceptanceKit.ensureHandlerRegistered(MODULE_ID, ItemHandler::new);
+        Player player = ctx.getSandboxPlayer();
+
         // 轨道一：功能链路契约与异常边界验收
-        ctx.executeContractCase("CONTRACT:item_use_insufficient", "道具不足时使用应返回 resource_not_enough", () -> {
-            Player player = ctx.getSandboxPlayer();
-            InProcessAcceptanceKit kit = ctx.getKit();
-            SandboxResetter.resetModules(player, "ItemModule", "CurrencyModule");
-            Map<String, Object> res = kit.invokeProto(player.getPlayerId(),
-                    cn.game.protocol.protobuf.PbProtocol.ItemUseRequest_0b000003,
-                    Map.of("itemUse", List.of(Map.of("id", 200001, "count", 1, "param", 0))));
-            kit.assertErrorCode(res, cn.game.protocol.manual.ErrorMsgEnum.resource_not_enough.getId());
+        ctx.executeContractCase("CONTRACT:item_sell_not_enough", "未拥有道具出售应返回资源不足拦截", () -> {
+            SandboxResetter.resetModules(player, "item", "currency");
+            Map<String, Object> req = Map.of("id", List.of(200001), "count", List.of(1));
+            Map<String, Object> res = InProcessAcceptanceKit.invokeProto(
+                    player.getPlayerId(), PbProtocol.ItemSellRequest_0b000007, req);
+            InProcessAcceptanceKit.assertErrorCode(res, ErrorMsgEnum.resource_not_enough.getId());
         });
     }
 
     @Override
-    public void runMatrixScan(AcceptanceContext ctx) {
+    public void runMatrixScan(AcceptanceContext ctx) throws Exception {
+        InProcessAcceptanceKit.ensureHandlerRegistered(MODULE_ID, ItemHandler::new);
+        Player player = ctx.getSandboxPlayer();
+        if (ItemManager.instance() == null) {
+            return;
+        }
+
         // 轨道二：多态策略 × 正式配表全量遍历扫描
+        Collection<ItemConfig> allItems = ItemManager.instance().list();
+        for (ItemConfig item : allItems) {
+            if (ctx.isCircuitBroken()) {
+                break;
+            }
+            if (item.Decompose != null && item.Decompose.length >= 2 && item.Decompose[0] > 0 && item.Decompose[1] > 0) {
+                String branchKey = "ITEM_SELL_DECOMPOSE";
+                String caseId = "MATRIX_ITEM_SELL_" + item.ID;
+                ctx.executeMatrixRow(caseId, "ItemConfig", item.ID, branchKey,
+                        () -> {
+                            SandboxResetter.resetModules(player, "item", "currency");
+                            PlayerHelper.addResources(player, item.ID, 1, OpType.GM, false);
+                            if (!PlayerHelper.isEnough(player, item.ID, 1)) {
+                                throw new AcceptanceFixtureException("造数后道具数量仍未满足", false);
+                            }
+                        },
+                        () -> {
+                            Map<String, Object> req = Map.of("id", List.of(item.ID), "count", List.of(1));
+                            return InProcessAcceptanceKit.invokeProto(
+                                    player.getPlayerId(), PbProtocol.ItemSellRequest_0b000007, req);
+                        },
+                        result -> {
+                            InProcessAcceptanceKit.assertProtocolSuccess(result);
+                            if (item.Decompose[0] != item.ID) {
+                                InProcessAcceptanceKit.assertResourceDelta(
+                                        result, item.Decompose[0], (long) item.Decompose[1]);
+                            }
+                        }
+                );
+            }
+        }
     }
 }
 ```

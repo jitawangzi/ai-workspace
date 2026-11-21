@@ -226,6 +226,7 @@ sendAndWait(newDayReq);
 |---|---|---|---|
 | Path A：进程内 / 模块级 JUnit | 纯计算、条件判定、状态转换、可隔离的模块行为 | 输入边界、失败分支、真实业务入口的断言与测试计数 | 网络协议、实际数据库、运行中服务已加载新代码 |
 | Path B：模拟客户端协议测试 | Handler、鉴权、协议顺序、模块与资源通知联动 | 正式 Protobuf 请求、错误码、回包/推送、状态与副作用 | 仅刷新协议缓存不能证明冷重载持久化 |
+| 模块双轨验收与多态配表全集扫描 | 模块级全协议契约验收 (`CONTRACT`) + 多态策略分支 × 全量正式配表遍历扫雷 (`MATRIX_SCAN`) | 进程内沙盒玩家、虚拟存盘确认、三维副作用静默、分支命中覆盖率与资源守恒断言 | 跨进程真实 TCP 握手与外部 MySQL/Redis 物理写入 |
 | 保存闭环补充 | 重置、扣费、领奖、迁移等依赖保存的修改 | 保存完成后从持久化介质重建新对象，验证字段和幂等性 | 读取同一 Player/Module 内存对象不能作为落库证据 |
 | 环境受限降级 | 完整环境未就绪时先做 Path A | 明确已执行的断言、未覆盖入口及限制 | 不将 A 改称 B；按需求目标补必要验证或记录真实待办 |
 
@@ -291,3 +292,32 @@ sendAndWait(newDayReq);
 | | assertModuleFieldEquals(moduleName, dotPath, expected) | 断言点分路径字段等价 (EX-15) |
 | | flushAndColdReload() | 强制落盘并冷重载，刷新本地缓存 (EX-15) |
 | **退出清理 (Cleanup)** | cleanupAll() | 自动最佳努力复位 Trace、时钟与随机源 (DR-12) |
+
+---
+
+## 11. 进程内模块双轨验收与多态配表全集扫描（ModuleAcceptancePlatform 与 SOP 分工）
+
+针对“多态业务策略分支漏测”与“正式配表全集运行时动态流转盲区”，项目内置了进程内模块双轨验收引擎（`cn.game.games.net.game.gm.acceptance.ModuleAcceptanceEngine`），并配有项目级自建 Skill [module-acceptance-tester](../skills/module-acceptance-tester/SKILL.md)。
+
+### 11.1 标准 SOP 开发流程与独立 Skill 的职责分工
+
+为避免拉长日常开发周期，两套机制按“日常增量门禁”与“模块全面验收”严格解耦：
+
+| 维度 | 标准 SOP 开发流程（T2 / T3）生成 | 独立 Skill (`module-acceptance-tester`) 按需生成 |
+|---|---|---|
+| **触发时机** | 日常新增/修改业务代码、修 Bug 时同步编写并作为 `Task Complete` 门禁 | 整个业务模块开发定型后、策划大批量配表后或提测封版前，由开发者**手动按需唤醒**（默认登记 T2 任务） |
+| **代码位置** | `game/src/test/java/.../*Test.java`（Path A JUnit）或 `simulationclient/.../Client*Test.java`（Path B 模拟客户端） | `game/src/main/java/cn/game/games/net/game/gm/acceptance/suites/*ModuleAcceptanceSuite.java`（注册至 `ModuleAcceptanceEngine`） |
+| **覆盖重点** | 1. 底层机制与白盒技术契约（存盘协调、并发、冷读反序列化表征）；<br>2. 本次改动点的 1~3 个典型样本 TDD 正反向断言；<br>3. 特定 Bug 的 `RED -> Fix -> GREEN` 回归用例。<br>*(不在日常增量任务中强制要求写全表扫描)* | 1. **轨道一 (`CONTRACT`)**：结合 `.ai-workspace/specs/features/` 设计文档与源码，覆盖该模块名下全部 Request 协议的正向主链路、条件/余额/限购拦截、跨天重置与幂等防重；<br>2. **轨道二 (`MATRIX_SCAN`)**：穷举该模块所有多态分发分支 × 关联配表的 **100% 正式数据行**（自动造数、破障、代金券同步抵扣、校验无报错且产出守恒）。 |
+| **执行入口** | Maven Surefire (`run-java-tests.ps1`) / `run_client.ps1` | 1. **GM 网页工作台可视化点按**：`/gm-console` 模块详情页顶部「🧪 功能契约验收」「📊 多态全量配表扫描」「🚀 一键全量验收」及失败项「🔄 单条重试」；<br>2. **JUnit 桥接回归**：通过 `Task Run -Profile module-acceptance-platform` 离线一键执行。 |
+
+### 11.2 沙盒安全隔离与核心组件速查
+
+| 组件类名 | 核心职责 |
+|---|---|
+| `ModuleAcceptanceEngine` | 套件注册中心与双轨调度器；生产模式（`PRODUCTION`）下在引擎入口与 HTTP 路由层执行双重硬阻断 |
+| `SandboxExecutionGuard` | 维护専用沙盒玩家 ID 段（`990_000_000L + moduleId`）、线程级静默上下文（拦截 `DAO` 异步写库、`PushService` 广播、`RankService` 写 Redis）与 `PlayerSaveCoordinator` 沙盒虚拟存盘确认（防 `savePlayerAndWait` 10 秒超时死锁） |
+| `AcceptanceContext` | 驱动 `executeContractCase` 与三段式回调 `executeMatrixRow`，执行四态故障归因（`PASSED` / `PROVISION_FAILED` / `FIXTURE_DEFECT` / `SUT_FAILURE` / `ASSERTION_FAILED`）、连续 3 次夹具失败熔断与多态分支 `UNCOVERED_BRANCH` 告警 |
+| `InProcessAcceptanceKit` | 进程内静态工具包：`ensureHandlerRegistered`、`invokeProto`、`gm`、`inspectModuleField`、`assertProtocolSuccess`、`assertErrorCode`、`assertResourceDelta` |
+| `SandboxResetter` | 调用 `resetModules(player, "item", "shop", "currency", ...)` 原地毫秒级重置模块状态、清理虚拟公会上下文并复位可控随机源 |
+| `ConditionSatisfier` | 调用 `satisfyConditions(player, ...)` 自动拉满等级/VIP/关卡、开启沙盒条件豁免并在涉及公会条件时注入临时虚拟 `guildId` |
+| `CostProvisioner` | 调用 `provisionShopPayment` / `provisionArrayCost` / `provisionFlatCost` 自动补齐消耗资源，将 RMB 直购自动映射为注入 `Asset.Vouchers`（代金券 ID=`100023`），并在测钻石抽卡前自动清空竞争性免费券（`clearCompetingFreeTicketIfNecessary`） |

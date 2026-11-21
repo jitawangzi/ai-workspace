@@ -6,6 +6,7 @@
 |---|---|---|---|
 | compile / compile-tests | Java/Maven及协议模块生成输入；写各模块 target，可能下载依赖 | 当前工作树编译；Task日志保留 | 指定输入能编译，不证明测试已执行或干净检出完整 |
 | java-unit-smoke / state-integrity | 指定进程内JUnit；编译依赖模块，写target和Surefire报告 | 新鲜报告及精确方法清单；失败保留Task日志 | 被执行的断言；不证明真实数据库与完整业务进程 |
+| module-acceptance-platform | 进程内双轨验收套件 JUnit (`ModuleAcceptancePlatformTest`)；沙盒玩家虚拟存盘确认并静默 DAO/Push/Rank 外部写入 | 新鲜 Surefire 报告与 `test-suites/module-acceptance-platform.json` 逐方法核对 | 模块全协议契约 (`CONTRACT`) 与多态策略×全量正式配表遍历 (`MATRIX_SCAN`)；不连接真实外部 DB/Redis |
 | java-tests | reactor全量测试，部分用例有外部服务条件 | 执行前审查实际选择器和环境；不能假设全部无副作用 | 报告实际执行范围；零执行、缺失目标或跳过不等于验收 |
 | workspace-syntax / workspace-contract | PowerShell、JSON及安装投影；主要读取脚本/文档 | Task保存结果；不启动Game/Login或连接数据库 | 语法、配置与文档契约，不证明业务行为 |
 | runtime-concurrency-tests | 启动独立pwsh控制器，以持久状态夹具替代业务进程 | 随机快照；finally结束自有控制器；成功清除夹具，失败保留材料 | 登记/清理/恢复组合、归属与参数边界；不是真实JVM故障注入 |

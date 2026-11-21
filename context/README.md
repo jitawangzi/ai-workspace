@@ -18,7 +18,7 @@
 | 实现 Handler / Module、事件、GM 或资源操作 | [ai-coding.md](ai-coding.md)、[api-whitelist.md](api-whitelist.md) |
 | Protobuf 定义及兼容 | [proto-rules.md](proto-rules.md) |
 | 表结构、生成类、配置来源 | [config-rules.md](config-rules.md) |
-| 测试与模拟客户端 | [client-test.md](client-test.md) |
+| 测试、模拟客户端与模块双轨验收/配表矩阵扫描 | [client-test.md](client-test.md)、[../skills/module-acceptance-tester/SKILL.md](../skills/module-acceptance-tester/SKILL.md) |
 | 选择验证入口、环境前提、资源副作用及清理 | [verification-effects.md](verification-effects.md) |
 | 联调运行实例、制品和配置证据 | [runtime-verification.md](runtime-verification.md) |
 | 保存、幂等、失败与恢复专项验证 | [state-integrity-testing.md](state-integrity-testing.md) |

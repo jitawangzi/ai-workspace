@@ -47,6 +47,7 @@ mvn -B '-DskipTests' test-compile
 | `sop-tests` | test | 自动发现引擎全部测试套件，60 分钟 |
 | `payment-trial-tools` | test | 正式反证工具的退出、超时、清理和报告判定回归，不运行 Maven 或业务服务 |
 | `first-charge-calibration` | test | 同一在线首充分支的替身与正式买入实现，三种成功/失败契约；受控存储，不证明真实发奖 |
+| `module-acceptance-platform` | test | 进程内模块双轨验收引擎（`CONTRACT` + `MATRIX_SCAN`）、沙盒虚拟存盘/副作用静默及已注册模块套件回归 |
 | `state-integrity` | test | game 模块保存快照、保存顺序、风险恢复和支付幂等四组现有测试；逐方法检查目标清单，不证明真实数据库或崩溃恢复 |
 | `runtime-evidence-tests` | test | 本机 HTTP 夹具、失败证据、真实 Java 参数编码；不连接游戏服 |
 | `runtime-identity-java` | test | 制品与配置摘要、挑战/实例/玩家/逻辑区服绑定的定向 Java 用例 |
