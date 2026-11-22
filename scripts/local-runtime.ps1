@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 <#
 .SYNOPSIS
     准备独立本机制品快照；仅启动指定快照的 Game/Login，并用本次标识精确管理进程。
@@ -11,7 +11,9 @@ param(
     [string]$ApolloCluster='SYQ',
     [string]$GameId='game_test',
     [string]$LoginId='login_test',
+    [string]$CrossId='cross_test',
     [int]$IdentityPort=17011,
+    [switch]$IncludeCross,
     [switch]$ConfirmDataScope
 )
 $ErrorActionPreference='Stop'
@@ -31,9 +33,10 @@ function SourceDigest {
     return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($lines -join "`n")))).ToLowerInvariant()
 }
 function RuntimeArgs($Settings,[string]$App) {
-    $order=if ($App -eq 'game') { @('game','util','core','protocol') } else { @('login','util','core','protocol','game') }
+    $order=if ($App -in @('game','cross')) { @('game','util','core','protocol') } else { @('login','util','core','protocol','game') }
+    $appId=$App
     $classpath=(@($order|ForEach-Object { Join-Path $Snapshot "artifacts/$_/classes" })+(Join-Path $Snapshot 'artifacts/lib/*')) -join ';'
-    return @("-Dapp.id=$App",'-Denv=dev',"-Dapollo.cluster=$($Settings.apolloCluster)","-Dapollo.configService=$($Settings.apolloUri)",
+    return @("-Dapp.id=$appId",'-Denv=dev',"-Dapollo.cluster=$($Settings.apolloCluster)","-Dapollo.configService=$($Settings.apolloUri)",
         "-Dapollo.cacheDir=$(Join-Path $Snapshot 'apollo-cache')","-DSEVER_PATH=$(Join-Path $Snapshot ('work/'+$App))",'-DdefaultNetworkIp=127.0.0.1','-Dserver.run.mode=test',
         "-Dworkspace=$hostRoot","-Dmetafolder=$(Join-Path (Split-Path -Parent $hostRoot) 'configs/Server')",
         '-Dfile.encoding=UTF-8','--add-opens=java.base/java.lang=ALL-UNNAMED','--add-opens=java.base/java.util=ALL-UNNAMED',
@@ -100,8 +103,8 @@ function RecoverLaunchRecords($Intent,$Settings,$Failures) {
             if(ProcessStillExists $candidate.ProcessId){$Failures.Add('CANDIDATE_IDENTITY_UNKNOWN:'+ $candidate.ProcessId)}
         }else{$readable.Add($candidate)}
     }
-    foreach ($app in @('login','game')) {
-        $main=if($app -eq 'game'){'cn.game.games.net.game.GameServer'}else{'cn.game.login.LoginServer'}
+    foreach ($app in @('login','game','cross')) {
+        $main=if($app -eq 'game'){'cn.game.games.net.game.GameServer'}elseif($app -eq 'cross'){'cn.game.games.net.cross.CrossServer'}else{'cn.game.login.LoginServer'}
         foreach ($candidate in $readable) {
             if (MatchesLaunch $candidate.CommandLine $Intent.runId $main) {
                 $p=$null
@@ -124,7 +127,7 @@ function RecoverLaunchRecords($Intent,$Settings,$Failures) {
 }
 if ($Action -eq 'Prepare') {
     if ($ApolloUri.Scheme -ne 'http' -or -not $ApolloUri.IsLoopback -or $ApolloUri.UserInfo -or $ApolloUri.Query) { throw 'LOCAL_APOLLO_URI_REQUIRED' }
-    if ($ApolloCluster -notmatch '^[A-Za-z0-9_.-]+$' -or $GameId -notmatch '^[A-Za-z0-9_.-]+$' -or $LoginId -notmatch '^[A-Za-z0-9_.-]+$') { throw 'LOCAL_RUNTIME_ID_INVALID' }
+    if ($ApolloCluster -notmatch '^[A-Za-z0-9_.-]+$' -or $GameId -notmatch '^[A-Za-z0-9_.-]+$' -or $LoginId -notmatch '^[A-Za-z0-9_.-]+$' -or $CrossId -notmatch '^[A-Za-z0-9_.-]+$') { throw 'LOCAL_RUNTIME_ID_INVALID' }
     $runId=[guid]::NewGuid().ToString('N')
     $Snapshot=Join-Path $runtimeRoot $runId
     $before=SourceDigest
@@ -149,7 +152,7 @@ if ($Action -eq 'Prepare') {
     }
     $metadata="buildId=local-$runId`nsourceDigest=$before`n"
     [IO.File]::WriteAllText((Join-Path $artifactRoot 'game/classes/runtime-build.properties'),$metadata,[Text.Encoding]::ASCII)
-    $settings=[ordered]@{schemaVersion='1.0';runId=$runId;apolloUri=$ApolloUri.AbsoluteUri.TrimEnd('/');apolloCluster=$ApolloCluster;gameId=$GameId;loginId=$LoginId;identityPort=$IdentityPort;sourceDigest=$before}
+    $settings=[ordered]@{schemaVersion='1.0';runId=$runId;apolloUri=$ApolloUri.AbsoluteUri.TrimEnd('/');apolloCluster=$ApolloCluster;gameId=$GameId;loginId=$LoginId;crossId=$CrossId;identityPort=$IdentityPort;sourceDigest=$before}
     $settings|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $Snapshot 'settings.json') -Encoding utf8
     $argsList=RuntimeArgs $settings 'game'
     & java @argsList 'cn.game.games.core.runtime.RuntimeIdentityManifest' $GameId (Join-Path $Snapshot 'expected-runtime.json')
@@ -157,6 +160,9 @@ if ($Action -eq 'Prepare') {
     $argsList=RuntimeArgs $settings 'login'
     & java @argsList 'cn.game.games.core.runtime.RuntimeIdentityManifest' $LoginId (Join-Path $Snapshot 'expected-login.json')
     RequireSuccess 'expected-login-manifest'
+    $argsList=RuntimeArgs $settings 'cross'
+    & java @argsList 'cn.game.games.core.runtime.RuntimeIdentityManifest' $CrossId (Join-Path $Snapshot 'expected-cross.json')
+    RequireSuccess 'expected-cross-manifest'
     Write-Output "LOCAL_RUNTIME_PREPARED:$Snapshot"
     exit 0
 }
@@ -171,11 +177,18 @@ $intentPath=Join-Path $Snapshot 'launch-intent.json'
 if ($Action -eq 'Start') {
     if (-not $ConfirmDataScope) { throw 'LOCAL_RUNTIME_DATA_SCOPE_REQUIRED: Game startup runs existing migrations; confirm this snapshot uses the intended test storage' }
     if ((Test-Path -LiteralPath $statePath) -or (Test-Path -LiteralPath $intentPath)) { throw 'LOCAL_RUNTIME_ALREADY_STARTED: inspect Status; prepare a new snapshot for another run' }
-    # 外部预检仅用于提前诊断；两个业务 JVM 仍须在存储初始化前核对自己的固定配置。
-    foreach ($app in @('game','login')) {
+    if ($IncludeCross -and -not (Test-Path -LiteralPath (Join-Path $Snapshot 'expected-cross.json'))) {
+        $crossIdForManifest = if ($settings.PSObject.Properties['crossId'] -and $settings.crossId) { [string]$settings.crossId } else { $CrossId }
+        $crossManifestArgs = RuntimeArgs $settings 'cross'
+        & java @crossManifestArgs 'cn.game.games.core.runtime.RuntimeIdentityManifest' $crossIdForManifest (Join-Path $Snapshot 'expected-cross.json')
+        RequireSuccess 'expected-cross-manifest'
+    }
+    # 外部预检仅用于提前诊断；业务 JVM 仍须在存储初始化前核对自己的固定配置。
+    $preflightApps = if ($IncludeCross) { @('game','login','cross') } else { @('game','login') }
+    foreach ($app in $preflightApps) {
         $argsList=RuntimeArgs $settings $app
-        $id=if ($app -eq 'game') { $settings.gameId } else { $settings.loginId }
-        $file=if ($app -eq 'game') { 'expected-runtime.json' } else { 'expected-login.json' }
+        $id=switch ($app) { 'game' { $settings.gameId } 'login' { $settings.loginId } 'cross' { if ($settings.PSObject.Properties['crossId'] -and $settings.crossId) { [string]$settings.crossId } else { $CrossId } } }
+        $file=switch ($app) { 'game' { 'expected-runtime.json' } 'login' { 'expected-login.json' } 'cross' { 'expected-cross.json' } }
         $candidate=Join-Path $Snapshot ($app+'-preflight.json')
         & java @argsList 'cn.game.games.core.runtime.RuntimeIdentityManifest' $id $candidate
         RequireSuccess 'preflight-manifest'
@@ -198,6 +211,16 @@ if ($Action -eq 'Start') {
         $records+=@{app=$app;pid=$process.Id;startedAt=$process.StartTime.ToUniversalTime().ToString('o');main=$main;runId=$settings.runId}
         Write-RuntimeProcessState $statePath $records
     }
+    if ($IncludeCross) {
+        $crossNodeId = if ($settings.PSObject.Properties['crossId'] -and $settings.crossId) { [string]$settings.crossId } else { $CrossId }
+        $crossArgs = RuntimeArgs $settings 'cross'
+        $expectedCrossPath = Join-Path $Snapshot 'expected-cross.json'
+        $crossArgs = @("-Druntime.expected=$expectedCrossPath") + $crossArgs
+        $crossMain = 'cn.game.games.net.cross.CrossServer'
+        $crossProcess = StartJava ($crossArgs + @($crossMain, $crossNodeId)) 'cross'
+        $records += @{app='cross';pid=$crossProcess.Id;startedAt=$crossProcess.StartTime.ToUniversalTime().ToString('o');main=$crossMain;runId=$settings.runId}
+        Write-RuntimeProcessState $statePath $records
+    }
     $deadline=[DateTimeOffset]::UtcNow.AddSeconds(180)
     $ready=$false
     while ([DateTimeOffset]::UtcNow -lt $deadline) {
@@ -206,7 +229,36 @@ if ($Action -eq 'Start') {
             $null=Get-RuntimeIdentityObservation -ExpectedPath (Join-Path $Snapshot 'expected-runtime.json') -IdentityUri "http://127.0.0.1:$($settings.identityPort)/runtime-identity" -TimeoutSeconds 30
             $gameProcess=@($records|Where-Object app -eq 'game')[0]
             $listener=Get-NetTCPConnection -LocalPort $settings.identityPort -State Listen -ErrorAction Stop
-            if ($listener.OwningProcess -contains $gameProcess.pid) { $ready=$true; break }
+            $crossReady = $true
+            if ($IncludeCross) {
+                $crossNodeId = if ($settings.PSObject.Properties['crossId'] -and $settings.crossId) { [string]$settings.crossId } else { $CrossId }
+                $crossErrLog = Join-Path $Snapshot 'cross.stderr.log'
+                $crossOutLog = Join-Path $Snapshot 'cross.stdout.log'
+                $gameOutLog = Join-Path $Snapshot 'game.stdout.log'
+                $crossLogReady = ((Test-Path -LiteralPath $crossErrLog) -and ((Get-Content -LiteralPath $crossErrLog -Raw -ErrorAction SilentlyContinue) -match 'Cross Server startup complete')) -or
+                                 ((Test-Path -LiteralPath $crossOutLog) -and ((Get-Content -LiteralPath $crossOutLog -Raw -ErrorAction SilentlyContinue) -match '跨服\[.+\]启动成功'))
+                $crossZkReady = $false
+                if ($crossLogReady) {
+                    if ((Test-Path -LiteralPath $gameOutLog) -and ((Get-Content -LiteralPath $gameOutLog -Raw -ErrorAction SilentlyContinue) -match ("active server node add ,id\[" + [regex]::Escape($crossNodeId) + "\] type\[Cross\]"))) {
+                        $crossZkReady = $true
+                    }
+                    if (-not $crossZkReady) {
+                        try {
+                            $suitesResp = Invoke-RestMethod -Uri 'http://127.0.0.1:18080/gm-console/api/workbench/acceptance/suites' -Method Get -TimeoutSec 2 -ErrorAction Stop
+                            if ($suitesResp -and $suitesResp.ok -and $suitesResp.data -and $suitesResp.data.suites) {
+                                $crossSuite = @($suitesResp.data.suites | Where-Object { $_.requiredServerTypes -contains 'Cross' })[0]
+                                if ($crossSuite -and $crossSuite.clusterTopology) {
+                                    $crossZkReady = (@($crossSuite.clusterTopology.missingServerTypes | Where-Object { $_ }) -notcontains 'Cross')
+                                } else {
+                                    $crossZkReady = $true
+                                }
+                            }
+                        } catch { }
+                    }
+                }
+                $crossReady = $crossLogReady -and $crossZkReady
+            }
+            if (($listener.OwningProcess -contains $gameProcess.pid) -and $crossReady) { $ready=$true; break }
         } catch { }
         Start-Sleep -Milliseconds 500
     }

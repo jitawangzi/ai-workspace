@@ -19,7 +19,7 @@ description: 模块级双轨自动化验收与多态配表矩阵扫描测试专�
 1. **多态业务策略分支漏测（代码维度）**：同一协议入口背后通过 `switch(type)`、枚举分发（如 `ItemUse`）或 `GoodsModule` 子类走向多套截然不同的处理逻辑，仅测一种类型会导致其余多态分支覆盖率为 0%；
 2. **正式配表全集运行时盲区（数据维度）**：静态配表检查器无法发现运行时动态公式计算、跨表深层引用、阶梯消耗或特殊参数组合引发的 `NullPointerException`、`IllegalArgumentException` 或奖励漏发（如商店前 10 个商品配置正确，第 85 个商品配置错误导致线上购买崩溃）。
 
-你的职责是为目标模块编写实现 `ModuleAcceptanceSuite` 接口的进程内双轨验收套件（位于 `game/src/main/java/cn/game/games/net/game/gm/acceptance/suites/`），使其同时可在 **GM Web 控制台工作台（`/gm-console`）** 一键点击执行，也可在 **JUnit** 中自动化回归。
+你的职责是为目标模块编写实现 `ModuleAcceptanceSuite` 接口的进程内双轨验收套件（位于 `game/src/main/java/cn/game/games/net/game/gm/acceptance/suites/`），使其能够在**真实的服务器集群运行环境（`GameServer` + `CrossServer` + `LoginServer` 按需或全量启动）**中通过 **GM Web 控制台工作台（`/gm-console`）** 或 **`.ai-workspace/scripts/run-live-module-acceptance.ps1`** 走真实跨服 RPC 与真实线程模型完成全面验收，同时也兼容在 **JUnit** 中自动化回归。
 
 ---
 
@@ -49,18 +49,23 @@ description: 模块级双轨自动化验收与多态配表矩阵扫描测试专�
 
 ## 三、 四步标准作业流程（4-Step Generation SOP）
 
-### Step 1：四维上下文盘点与覆盖建模（Discovery & Modeling）
+### Step 1：五维上下文盘点与覆盖建模（Discovery & Modeling）
 
-对目标模块执行以下盘点，并在脑中（或任务说明中）建立三维覆盖表：
+对目标模块执行以下盘点，并在脑中（或任务说明中）建立三维覆盖表与集群拓扑声明：
 1. **检索规格文档**：在 `.ai-workspace/specs/features/` 下查找匹配模块名/关键字的目录，提取核心 `BR-*`、`EX-*`、`INV-*` 并与源码比对。
 2. **盘点协议入口（`*Msg.proto` & `*Handler.java`）**：
-   - 确认 `//@MessageModule` 十六进制模块号（如 `0x0b` 道具、`0x15` 商店）；
+   - 确认 `//@MessageModule` 十六进制模块号（如 `0x0b` 道具、`0x15` 商店、`0x40` 公会）；
    - 列出 `inititialize()` 中注册的全部 `putInvoker(PbProtocol.XxxRequest, this::xxx)` 协议入口；
    - 梳理每个入口的前置校验链（功能开启 `player.isFuncOpen`、`Condition` 条件检查、次数/限购上限、CD 冷却、资源消耗 `PlayerHelper.delResources` 或 `player.pay`）。
-3. **盘点多态分发分支（Polymorphic Branches）**：
+3. **盘点跨服 RPC 与真实服务器拓扑依赖（Cluster Topology & Cross-Server RPC）**：
+   - 检查 `*Handler.java` / `*Module.java` / `*Helper.java` 是否调用了 `ServerHelper.getGuildProxy(...)`、`ServerHelper.getCrossServerInterface()`、`ServerHelper.getRemoteInterfaceProxy(...)`、`VxHolder.requestRemoteServer(ServerType.Cross, ...)` 等跨服远程调用；
+   - 在套件中显式重写 `getRequiredServerTypes()`：
+     - 纯本服模块默认返回 `List.of(ServerType.Game)`；
+     - 涉及跨服节点（如公会 `Guild`、跨服排行/匹配/聊天等）的模块，**必须返回 `List.of(ServerType.Game, ServerType.Cross)`**（如还需登录服交互则加上 `ServerType.Login`），使验收引擎在正式集群验收（`requireLiveCluster = true`）时自动校验对应 `ServerType` 节点是否已在 `ActiveServerListManager` 中真实上线。
+4. **盘点多态分发分支（Polymorphic Branches）**：
    - 找出模块内所有的 `switch-case`、枚举策略分发（如 `ItemUse.valueOf(item.ItemType)`）、`GoodsModule` 子类分发、或按配置表 `Type` 字段走不同逻辑的代码分支；
-   - 将每个分支定义为稳定的字符串键（如 `"ITEM_USE_TYPE_4_HeroChoose"`、`"SHOP_TYPE_2_Heishi"`），填入套件的 `getDeclaredBranches()`。
-4. **盘点关联配置表（`*Config.java` & `*Manager.java`）**：
+   - 将每个分支定义为稳定的字符串键（如 `"ITEM_USE_TYPE_4_HeroChoose"`、`"SHOP_TYPE_2_Heishi"`、`"GUILD_BARGAIN_BUY"`），填入套件的 `getDeclaredBranches()`。
+5. **盘点关联配置表（`*Config.java` & `*Manager.java`）**：
    - 找出模块读取的所有 `XxxManager.instance().list()` 配置表，填入 `getRelatedTables()`；
    - 明确每张表的：**主键 ID**、**分类/多态字段**、**前置条件字段（如 `UnlockCondition`/`BuyCondition`）**、**消耗字段（如 `PurchaseParameter`/`cost`/`Decompose`）** 与 **产出奖励字段（如 `Item`/`Reward`/`Para`）**。
 
@@ -76,7 +81,11 @@ description: 模块级双轨自动化验收与多态配表矩阵扫描测试专�
    - **限购/冷却/上限拦截（Limit Guard）**：连续购买或操作直至达到配表上限（如 `ShopItemQuota`），再发第 $N+1$ 次请求 $\to$ 断言返回上限错误码（如 `shop_item_buy_count_max` / `times_limit`）。
    - **跨周期重置自愈（Cross-Day / Reset）**：在达到每日上限后，触发跨天刷新（如 `player.getShopModule().onDayReset()` 或 `PlayerHelper.refreshDay`）$\to$ 验证计数归零并可再次成功执行。
    - **幂等与防重入（Idempotency）**：对一次性购买/领取协议（如月卡、章节礼包、基金通行证购买、已领奖励）重复发送相同请求 $\to$ 断言第二次请求被 `repeat_request` / `month_card_repeated` / `shop_gift_repeated` 拦截。
-2. **禁止项**：
+2. **真实集群与跨服 RPC 铁律（禁止本地内存绕过）**：
+   - **严禁在 `GameServer` 验收套件中直接调用 `CrossServer` 专属本地内存单例**（如严禁调用 `GuildService.getInstance()` 或 `GuildManager.getInstance().getGuild(...)`）！在真实多进程集群（`GameServer` 与 `CrossServer` 为独立 JVM 进程）中，跨服实体（如 `Guild`）仅驻留在 `CrossServer` 的 JVM 内存中，`GameServer` 本地的 `GuildManager` 为空。
+   - 所有跨服状态准备、查询与业务动作，**必须 100% 通过正式协议（`InProcessAcceptanceKit.invokeProto`）或真实 Vert.x 远程 RPC 代理（`ServerHelper.getGuildProxy(...)` / `ServerHelper.getCrossServerInterface()`）执行**，确保在正式集群环境下走真实的 EventBus 跨进程序列化与远程调用。
+   - 若跨服验收需要特定的测试前置状态辅助（如重置跨服公会的砍价目标），应在对应的跨服 RPC 接口（如 `GuildServiceInterface`）上定义正式的远程方法并通过 `ServerHelper.getGuildProxy(guildId)` 调用，严禁在 `GameServer` 本地强取跨服实体。
+3. **禁止项**：
    - 在验证“余额不足/条件不满足/达到上限”的反例契约用例中，**严禁调用破障器自动补钱或开启条件豁免**！
    - 切勿对第一次正向前置操作使用 `if (code == 0)` 包裹第二次重复拦截断言（防止因前置缺钱失败而静默跳过断言造成假阳性）。
 
@@ -91,6 +100,7 @@ description: 模块级双轨自动化验收与多态配表矩阵扫描测试专�
    - **回调 1 `arrangeAndPreCheck`（阶段 1 造数破障 + 阶段 2 前置自检，`Runnable`）**：
      - 调用 `SandboxResetter.resetModules(player, "item", "currency", ...)` 重置被测模块与关联资源模块（支持传不带 `Module` 后缀的短名称或类简单名），确保当前行与第 1 行处于完全一致的初始环境；
      - 调用 `ConditionSatisfier.satisfyConditions(player, config.UnlockCondition, config.BuyCondition)`（支持传入 `int[]...` 或 `int...` 条件 ID，内部自动拉满等级/VIP/关卡、开启条件豁免并在遇到公会条件时自动设置虚拟 `guildId`）；
+     - 若业务依赖真实跨服实体（如公会捐献/祈福/砍价/职位变更要求 `CrossServer` 上真实存在沙盒公会且玩家在公会成员列表中），在 `arrangeAndPreCheck` 中通过 `ServerHelper.getGuildProxy(...)` 或正式创建公会协议确保跨服沙盒实体已就绪；
      - 若业务要求目标条目先存在于玩家模块容器中（如商店购买要求 `ShopModule` 持有该 `ShopItem`，道具使用/分解要求背包持有该 `Item`），显式注入目标实例并清零已购买/已使用计数；
      - 调用 `CostProvisioner` 静态方法自动补齐本行配置所需的普通资源或 **`Asset.Vouchers`（代金券，ID=`100023`）**：
        - 商店购买参数（`[costType, itemId, count]`）：`CostProvisioner.provisionShopPayment(player, config.PurchaseParameter, 1)`；
@@ -99,12 +109,12 @@ description: 模块级双轨自动化验收与多态配表矩阵扫描测试专�
        - 宝箱抽卡防免费券污染：`CostProvisioner.clearCompetingFreeTicketIfNecessary(player, shopBoxConfig, costType)`；
      - **前置自检**：校验所需前置道具/状态已在沙盒玩家身上就绪；若未就绪则抛出 `new AcceptanceFixtureException("...", false)`（引擎自动归因为 `FIXTURE_DEFECT` 或 `PROVISION_FAILED`，连续 3 次触发熔断，绝不混淆为业务 Bug）。
    - **回调 2 `sutAct`（阶段 3 正式协议发包，`Supplier<Map<String, Object>>`）**：
-     - 调用并返回 `InProcessAcceptanceKit.invokeProto(player.getPlayerId(), PbProtocol.XxxRequest, payloadMap)`，走真实 `Dispatcher` + `Handler` 执行，全程捕获 Response、Push、Trace `resourceEvents`/`errorEvents` 与模块 `Diff`。
+     - 调用并返回 `InProcessAcceptanceKit.invokeProto(player.getPlayerId(), PbProtocol.XxxRequest, payloadMap)`，走真实 `Dispatcher` + `Handler`（以及真实 `ActorMailbox` 虚拟线程与跨服 RPC）执行，全程捕获 Response、Push、Trace `resourceEvents`/`errorEvents` 与模块 `Diff`。
    - **回调 3 `sutVerify`（阶段 4 语义守恒断言，`Consumer<Map<String, Object>>`）**：
      - 调用 `InProcessAcceptanceKit.assertProtocolSuccess(result)` 校验响应 `errorCode == 0` 且 `trace.errorEvents` 为空；
      - 校验资源消耗与产出流水净额或模块业务状态跟配表字段一致（如分解道具获得的资源 ID 与数量等于 `item.Decompose[0]` / `item.Decompose[1]` 时调用 `InProcessAcceptanceKit.assertResourceDelta(result, item.Decompose[0], item.Decompose[1])`；若不一致则抛出 `AssertionError`，引擎自动归因为 `ASSERTION_FAILED`）。
    - **阶段 5 `TEARDOWN`（引擎自动强制复位）**：
-     - 由 `AcceptanceContext` 的 `finally` 块自动执行 `SandboxExecutionGuard.enableConditionBypass(playerId, false)`、`ConditionSatisfier.setSandboxGuildContext(player, 0L)` 与 `Rnd.resetControlledRandom()`，防止跨用例状态泄漏。
+     - 由 `AcceptanceContext` 的 `finally` 块自动执行 `SandboxExecutionGuard.enableConditionBypass(playerId, false)`、`ConditionSatisfier.clearVirtualGuildContextIfSet(player)`（仅清理 `ConditionSatisfier` 注入的虚拟公会 ID，不误删跨服套件创建的真实沙盒公会）与 `Rnd.resetControlledRandom()`，防止跨用例状态泄漏；涉及真实跨服实体（如跨服公会）的套件须在 `runContractCases` 与 `runMatrixScan` 的最外层 `finally` 中调用远程解散接口（如 `ServerHelper.getGuildProxy(oldGuildId).dissolveGuild(...)`）回收跨服内存与 Redis 数据。
 
 2. **多态分支命中登记**：
    - 每行配表执行时必须传入其所属的 `branchKey`（必须与 `getDeclaredBranches()` 中声明的分支键一致）；
@@ -112,24 +122,34 @@ description: 模块级双轨自动化验收与多态配表矩阵扫描测试专�
 
 ---
 
-### Step 4：注册、编译与自检验证闭环（Verification）
+### Step 4：注册、真实服务器集群联调验收与 JUnit 回归闭环（Live Cluster & Regression Verification）
 
 1. **在验收引擎中注册套件**：
    - 新套件实现 `ModuleAcceptanceSuite` 接口，放置在 `game/src/main/java/cn/game/games/net/game/gm/acceptance/suites/` 目录；
-   - 在 `ModuleAcceptanceEngine` 私有构造器（`game/src/main/java/cn/game/games/net/game/gm/acceptance/ModuleAcceptanceEngine.java`）中调用 `registerSuite(new XxxModuleAcceptanceSuite())` 完成内置注册（使 GM 网页工作台与离线 JUnit 均可直接发现并调用）。
-2. **编写/更新 JUnit 自动化测试**：
-   - 在 `game/src/test/java/cn/game/games/net/game/gm/acceptance/ModuleAcceptancePlatformTest.java`（或对应模块验收测试类）中补充对该 `moduleId` 的 `CONTRACT`、`MATRIX_SCAN` 与单条 `caseId` 重试断言；
-   - 通过 `Task Run -Profile compile`、`compile-tests` 与 `module-acceptance-platform`（或定向 Java 测试命令）验证套件零夹具故障（`provisionFailures == 0 && fixtureDefects == 0`），并能完整输出 `ModuleAcceptanceReport`。
-3. **向用户输出结构化验收总结**：
-   - 汇总：① 关联规格文档核对结论（含 `[SPEC_CODE_MISMATCH]` 与 `[DOC_DRIFT_WARNING]` 清单）；② 轨道一契约用例覆盖列表；③ 轨道二配表扫描总行数、多态分支覆盖率及实测发现的真实配表/代码缺陷明细。
+   - 在 `ModuleAcceptanceEngine` 私有构造器（`game/src/main/java/cn/game/games/net/game/gm/acceptance/ModuleAcceptanceEngine.java`）中调用 `registerSuite(new XxxModuleAcceptanceSuite())` 完成内置注册。
+2. **在真实服务器运行环境（`GameServer` + `CrossServer` + `LoginServer`）中执行全面验收（核心强制环节）**：
+   - 先通过 `Task Run -Profile compile` 完成最新代码编译；
+   - 使用内置的真实集群验收脚本一键启动/连接所需服务器节点并触发 `requireLiveCluster = true` 正式环境验收：
+     ```powershell
+     pwsh -NoProfile -File ./.ai-workspace/scripts/run-live-module-acceptance.ps1 -ModuleId <0x..> -Mode ALL -AutoStartServers
+     ```
+     - 该脚本会自动检查 `http://127.0.0.1:18080/gm-console/api/workbench/acceptance/suites` 返回的 `clusterTopology`（含 `requiredServerTypes`、`activeServers` 与 `missingServerTypes`）；
+     - 若套件声明了 `ServerType.Game` 与 `ServerType.Cross`（如 `GuildModuleAcceptanceSuite`），脚本在 `-AutoStartServers` 模式下会自动按需拉起真实 `GameServer` + `CrossServer`（加 `-IncludeLogin` 可同时拉起 `LoginServer`，加 `-ForceRestartServers` 可强制重启已有测试节点以确保运行最新编译代码；也可预先通过 `run_server.ps1 -Action Prepare/Start -IncludeCross -ConfirmDataScope` 或 `run_game.bat` + `run_cross.bat` 启动集群），等待所有必需节点完成启动并在 ZooKeeper / `ActiveServerListManager` 中注册就绪（`clusterTopology.ready == true`），然后向 `POST /gm-console/api/workbench/acceptance/run` 发起带 `"requireLiveCluster": true` 的全量验收请求；
+     - 必须确认真实集群返回的报告中：`clusterTopology.liveServerRuntime == true`、`clusterTopology.ready == true`、`provisionFailures == 0`、`fixtureDefects == 0`，且所有 `CONTRACT` 与 `MATRIX_SCAN` 用例在真实服务器集群中走完完整链路。
+3. **编写/更新 JUnit 自动化回归测试**：
+   - 在 `game/src/test/java/cn/game/games/net/game/gm/acceptance/ModuleAcceptancePlatformTest.java`（或对应模块验收测试类）中补充对该 `moduleId` 的 `CONTRACT`、`MATRIX_SCAN`、集群拓扑元数据与单条 `caseId` 重试断言；
+   - 通过 `Task Run -Profile compile-tests` 与 `module-acceptance-platform` 留存 SOP 标准测试证据。
+4. **向用户输出结构化验收总结**：
+   - 汇总：① 真实服务器集群拓扑就绪状态（`GameServer` / `CrossServer` 在线节点 ID 与真实跨服 RPC 调用链路）；② 关联规格文档核对结论（含 `[SPEC_CODE_MISMATCH]` 与 `[DOC_DRIFT_WARNING]` 清单）；③ 轨道一契约用例覆盖列表；④ 轨道二配表扫描总行数、多态分支覆盖率及实测发现的真实配表/代码缺陷明细。
 
 ---
 
 ## 四、 黄金参考范本与标准套件代码骨架
 
-编写新模块验收套件前，优先参考已落地的两个标杆套件：
-- 道具模块标杆：`game/src/main/java/cn/game/games/net/game/gm/acceptance/suites/ItemModuleAcceptanceSuite.java`
-- 商店模块标杆：`game/src/main/java/cn/game/games/net/game/gm/acceptance/suites/ShopModuleAcceptanceSuite.java`
+编写新模块验收套件前，优先参考已落地的三个标杆套件：
+- 本服道具模块标杆：`game/src/main/java/cn/game/games/net/game/gm/acceptance/suites/ItemModuleAcceptanceSuite.java`
+- 本服商店模块标杆：`game/src/main/java/cn/game/games/net/game/gm/acceptance/suites/ShopModuleAcceptanceSuite.java`
+- 跨服公会模块标杆（`GameServer <-> CrossServer` 真实 RPC）：`game/src/main/java/cn/game/games/net/game/gm/acceptance/suites/GuildModuleAcceptanceSuite.java`
 
 标准套件代码骨架如下：
 
@@ -150,6 +170,7 @@ import cn.game.protocol.generated.manager.ItemManager;
 import cn.game.protocol.manual.ErrorMsgEnum;
 import cn.game.protocol.manual.OpType;
 import cn.game.protocol.protobuf.PbProtocol;
+import cn.game.util.ServerType;
 
 /**
  * 示例模块双轨自动化验收套件
@@ -171,6 +192,12 @@ public class ExampleModuleAcceptanceSuite implements ModuleAcceptanceSuite {
     @Override
     public String getTitle() {
         return "道具使用与分解验收";
+    }
+
+    @Override
+    public List<ServerType> getRequiredServerTypes() {
+        // 本服模块返回 List.of(ServerType.Game)；涉及跨服 RPC（如 Guild）的模块返回 List.of(ServerType.Game, ServerType.Cross)
+        return List.of(ServerType.Game);
     }
 
     @Override
