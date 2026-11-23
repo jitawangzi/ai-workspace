@@ -1,5 +1,11 @@
 {
   "schemaVersion": "1.0",
+  "coldReloadPatterns": [
+    "CborSnappyUtil\\.decompress\\s*\\(",
+    "\\bselectByPrimaryKey\\s*\\(",
+    "\\bselectByPlayerId\\s*\\(",
+    "\\bflushAndColdReload\\s*\\("
+  ],
   "commands": {
     "compile": {
       "kind": "compile",
