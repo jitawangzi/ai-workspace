@@ -1,4 +1,4 @@
-<!-- context-meta owner:jitawangzi reviewedAt:2026-11-21 expiresAt:2027-04 -->
+<!-- context-meta owner:jitawangzi reviewedAt:2026-11-24 expiresAt:2027-05 -->
 # 项目工具与仓库边界
 
 > 底层测试夹具、打包/增量复审导出参数、失败现场清理及历史性能测量细节已拆分至按需文档 [tooling-reference.md](tooling-reference.md)。
@@ -14,9 +14,11 @@ mvn -B '-DskipTests' test-compile
 
 根 POM 默认 `skipTests=true`。编译成功、`test-compile` 成功或 Maven 报 `BUILD SUCCESS` 均**不保证测试实际执行**。执行真实 JUnit 用例须显式 `-DskipTests=false` 并核对报告；`simulationclient` 场景位于 `src/main/java`，`mvn test` 不会自动运行它们。
 
-## 2. 本项目批次的多 Agent 独立审核约定
+## 2. 服务端优化批次的多 Agent 独立审核约定（按范围适用）
 
-用户已明确要求服务端优化后续每批修改加入多 Agent 独立审核。默认仍按 T2 执行，并追加下列交付要求，不因此升级为 T3 或重复索取已有授权：
+> **适用范围澄清**：本节仅适用于**服务端架构/核心链路优化批次**（如存储/保存/支付/跨服优化专项）或**用户显式要求独立审核的任务**；常规日常业务功能开发、小 Bug 修复与文档任务仍严格按 [AGENTS.md](../../AGENTS.md) 默认 **T2** 执行（不强制独立审核、不自动升级为 T3，也不依赖独立 subagent）。
+
+触发本节约定的批次默认仍按 T2 执行，并追加下列交付要求（不因此升级为 T3 或重复索取已有授权）：
 
 - 每批由至少两位独立审核者先分别审查同一源码版本；一位侧重业务预期、调用方与兼容，另一位侧重异常、资源生命周期与证据，首轮不共享结论。
 - 审核者只读，controller 保持修改任务归属并统一修复；审核遵循宿主 context，区分本次引入/放大缺陷、耦合风险与既有问题。
@@ -43,6 +45,7 @@ mvn -B '-DskipTests' test-compile
 | `first-charge-calibration` | test | 在线首充分支的替身与正式买入契约校准 |
 | `runtime-evidence-tests` | test | 本机 HTTP 夹具、失败证据与参数编码回归（不连游戏服） |
 | `runtime-identity-java` | test | 制品与配置摘要、挑战/实例/玩家/逻辑区服绑定定向 Java 用例 |
+| `runtime-concurrency-tests` | test | 独立 pwsh 控制器与持久状态夹具覆盖快照排他锁、清理归属与失败恢复 |
 
 - **JUnit 5 报告门禁**：Java Profile 通过 `scripts/run-java-tests.ps1` 调用 Surefire 3.5.2（避免默认 2.12.4 跳过 JUnit 5），核对本轮新生成 XML，零执行/全跳过/失败均不通过；定向验证可传 `-Project` / `-Test` / `-ExpectedTestsFile <JSON>`。
 - **适用边界**：`workspace-*` 仅适用于只改工作流资料/脚本的任务，不能替代 Java 编译或行为测试。
@@ -61,7 +64,7 @@ mvn -B '-DskipTests' test-compile
 
 | 目录 | 仓库归属 | 说明 |
 |---|---|---|
-| `server/`（含 `doc/`、根 `README.md`） | `server.git`（宿主主仓） | `.git/info/exclude` 已本地忽略 `.ai-workspace/` 与运行目录；仅提交本次任务改动 |
+| `server/`（含 `doc/`、根 `README.md`） | `server.git`（宿主主仓） | `.gitignore` 已忽略 `.ai-workspace/`、`protocol/` 与投影目录（`ANTIGRAVITY.md`/`GEMINI.md`/`ai-sop.ps1` 由宿主跟踪，禁止手改）；仅提交本次任务改动 |
 | `protocol/` | `protocol.git`（独立仓库） | 改协议或配置生成类前先 `git -C protocol status`，须独立提交 |
 | `.ai-sop/` | `agent-sop.git`（Git Submodule） | 版本由 `tools/ai-sop/ai-sop.lock.json` 锁定；**严禁在宿主投影副本修改** |
 | `.ai-workspace/`（不含 `specs/`） | `ai-workspace.git`（独立仓库） | 存放本服领域上下文、自建 Skill 与校验脚本 |
@@ -80,4 +83,5 @@ pwsh -NoProfile -File ./ai-sop.ps1 Doctor   # 检查本机依赖与接入状态
 ```
 
 - Hook 配置文件存在不代表客户端已启用，接入详见 `.ai-sop/docs/HARNESS_ADAPTERS.md`。
+- **只读探索阶段防误触 PreToolUse Guard**：未执行 `Task Start/Resume` 前，只读排查优先使用原生文件读取工具；如需执行只读命令，使用**单条无分号、无变量 `$`、无脚本块 `{}`、无重定向 `>`、不越界 `..`** 的命令（如 `rg`、`git status|diff|log`、`Get-ChildItem`、`Select-String`）。Antigravity 客户端若遇 `update_focus`/`update_steps` 被报 `AI_SOP_GUARD_TOOL_UNKNOWN`，属上游 `agent-sop` Hook 工具白名单范围（不得在宿主 `.ai-sop/` 副本手改）。
 - 审查导出（`export-review.ps1`）、证据打包（`pack-review-evidence.ps1`）、大型输入基线预算（`start-inputs.json`）及底层测试清理细节见 [tooling-reference.md](tooling-reference.md)。

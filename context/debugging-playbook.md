@@ -12,9 +12,9 @@
 
 | 排查项 | 本项目入口位置 | 排雷要点 |
 |---|---|---|
-| **静态配置数据** | 外部源：`../configs/Server/output/`<br>运行 XML：`{protocol,game,login}/src/main/resources/xml/*.xml`<br>生成类：`protocol/src/main/java/cn/game/protocol/generated/{config,manager,enume,helper}/`<br>运行期查表：`ConfigQueryService`（`config.get`/`config.list`） | 先核对三处同步链路与 `-Dmetafolder`、表行 ID、数组分隔符（`\|` 与 `;`）、条件/权重/时间窗口；禁止手改生成类（详见 [config-rules.md](config-rules.md)）。 |
+| **静态配置数据** | 外部源：`../configs/Server/output/`<br>运行 XML：`game/src/main/resources/xml/*.xml`（`copy.bat` 同步全量至 `game`、`GlobalConst.xml` 至 `login`；仓内 `protocol`/`login` 亦存历史副本）<br>生成类：`protocol/src/main/java/cn/game/protocol/generated/{config,manager,enume,helper}/`<br>运行期查表：`ConfigQueryService`（`config.get`/`config.list`） | 先核对三处同步链路与 `-Dmetafolder`、表行 ID、数组分隔符（一维 `;`，二维 `\|` 与 `;`）、条件/权重/时间窗口；禁止手改生成类（详见 [config-rules.md](config-rules.md)）。 |
 | **错误码与协议映射** | `protocol/src/main/java/cn/game/protocol/manual/ErrorMsgEnum.java`<br>`PbProtocol.java`、`BaseHandler`（`CMD_INVOKERS`） | 业务失败统一 `player.fail(ErrorMsgEnum.xxx)` 抛 `LogicException`；核对是否为预期前置拦截、`protocol.bat` 是否已重跑、`Request + 1 = Response` 配对是否正确。 |
-| **运行目标与环境** | [runtime-verification.md](runtime-verification.md)、[verification-effects.md](verification-effects.md)、[doc/deployment_guide.md](../../doc/deployment_guide.md) | 常规排查不默认启服；联调先核对端口（ZK `2181`/Redis `6379`/Apollo `9888`/MySQL `3306`/Game `7011`/Login `9390`）、`hosts`（`127.0.0.1 test`）、`-Denv=dev`、`-DdefaultNetworkIp=127.0.0.1` 及 `runtimeIdentity <nonce>` 探针，防测错旧包。 |
+| **运行目标与环境** | [runtime-verification.md](runtime-verification.md)、[verification-effects.md](verification-effects.md)、[doc/deployment_guide.md](../../doc/deployment_guide.md) | 常规排查不默认启服；联调先核对端口（ZK `2181`/Redis `6379`/Apollo `9888`/MySQL `3306`/Game `7011`/Login `9390`/GM 控制台 `18080`）、`hosts`（`127.0.0.1 test`）、`-Denv=dev`、`-DdefaultNetworkIp=127.0.0.1` 及 `runtimeIdentity <nonce>` 探针，防测错旧包。 |
 
 ### 1.2 三类进程真实日志路径（切勿把模拟客户端 `logs/*.log` 误当主服日志）
 
@@ -29,10 +29,11 @@
 ## 2. 本服白盒与交互调试工具（非生产优先）
 
 1. **GM Web 工作台（`GameServer` 内置 `vertx-web` + `gm-console/panels/`）**：
+   - 默认地址：**`http://127.0.0.1:18080/gm-console`**（非生产模式自动开启；生产默认关闭，受 `gm.http.enabled/port/host/requireAuth/opsToken` 控制，详见 [doc/deployment_guide.md](../../doc/deployment_guide.md)）；
    - 自动发现全服功能模块、`proto.catalog`（协议与错误码字典）、`config.*`（配置表查询）；
    - 支持动态协议表单发包，捕获主 `Response` + 伴随 `Push`、请求级 Trace（`withTrace=true`）与前后模块字段 Diff（`withDiff=true`）；
    - 对应底层观测服务：`RequestTraceService`、`PlayerInspectService`、`ProtocolSimulationService`（`game/.../net/game/gm/`）。
-2. **结构化测试协议 `0x6f` 与核心白盒指令**：
+2. **结构化测试协议 `0x6f` 与核心白盒指令**（`GmDispatcher` 同时接受规范全名 `player.gm.*`/`player.time.*` 与无冲突短名 `gm.*`/`time.*`）：
    - `gm.inspect`：只读抓取在线玩家指定模块真实内存状态（`OPS_SAFE`，在目标玩家虚拟线程内采集）；
    - `gm.trace.*`：录制非生产业务请求 Trace、资源流水净变化与 ERROR 日志；
    - `time.*`：非生产跨平台虚拟时钟（`DateUtil` / 跨天 / 跨周 / 跨月结算测试）；

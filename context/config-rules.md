@@ -77,9 +77,10 @@ public enum QuestTypeEnum {
 
 ### 3.2 集合类型
 *   **数组**：支持一维和二维数组。
-    *   示例：`int[]` (例如 `1,2,3`), `int[][]` (例如 `1,1;2,2`), `LocalDateTime[]` 等。
+    *   示例：`int[]` 使用英文分号（例如 `1;2;3`），`int[][]` 使用组内分号、组间竖线（例如 `100002;100|200001;5`），`string[]` / `string[][]` 同理。
 *   **映射 (Map)**：
-    *   示例：`Map<Integer, Integer>`, `Map<Byte, Integer>` 等。
+    *   示例：`Map<Integer, Integer>`（例如 `100002;3|200001;5`）、`Map<Byte, Integer>` 等。
+*   **详细类型边界**：`boolean`（须用 `0`/`1`，禁文本 `false`）、`Date`/`CronExpression`、枚举引用及不支持类型限制见 [doc/02_开发流程与研发规范手册.md](../../doc/02_开发流程与研发规范手册.md) 第 3.3、3.10 节。
 
 ---
 
@@ -94,23 +95,17 @@ public enum QuestTypeEnum {
 ### 4.1 常用读取接口
 
 ```java
-// 1. 按 ID 获取 (不存在时抛出异常，适用于逻辑上必须存在的配置)
+// 按 ID 获取 (不存在时抛出异常，适用于逻辑上必须存在的 dict/odict 配置)
 QuestConfig config = QuestManager.instance().get(id);
 
-// 2. 按 ID 获取 (允许返回 null，适用于尝试性查找)
+// 按 ID 获取 (允许返回 null，适用于尝试性查找)
 QuestConfig config = QuestManager.instance().getNullable(id);
 
-// 3. 获取全量数据列表
+// 获取全量数据集合（dict/odict 返回 Collection；list 类型返回 List）
 Collection<QuestConfig> allQuests = QuestManager.instance().list();
-
-// 4. 获取全量数据列表，假设这个表是使用list方式存储的
-List<QuestGroupConfig> allGroupQuests = QuestGroupManager.instance().list();
-
-// 5. 获取原始索引 Map
-Map<Integer, QuestConfig> allMap = QuestManager.instance().getMap();
-
-
 ```
+
+> **注意**：当前生成模板**不提供**通用的 `getMap()` 方法；`group` / `list` / `ui` 类型表也没有 `get(id)`，各自访问方法请直接查看对应生成类（`protocol/src/main/java/cn/game/protocol/generated/manager/`）及 [doc/02_开发流程与研发规范手册.md](../../doc/02_开发流程与研发规范手册.md) 第 3.4～3.7 节。
 
 ### 4.2 索引查询
 如果在配置中定义了索引字段（例如按 `Type` 字段索引，同时支持多字段联合索引，唯一索引），工具会生成额外的查询方法：
@@ -175,16 +170,14 @@ Map<Integer, List<QuestConfig>> typeMap = QuestManager.instance().getTypes();
 
 *   **格式**: `ItemId;Count;...|ItemId;Count;...`
     *   **分隔符**: `|` 分隔外层数组（如不同的次数阶梯），`;` 分隔内层数组（具体的物品列表）。
-*   **示例 1 (阶梯消耗)**:
-    *   需求：第1次消耗 100金币，第2次消耗 200金币。
-    *   配置：`1001;100|1001;200`
-    *   解析：`int[][] cost = {{1001, 100}, {1001, 200}};`
-*   **示例 2 (混合消耗)**:
-    *   需求：消耗 100金币 和 1个令牌。
-    *   配置：`1001;100;2001;1`
-    *   解析：`int[][] cost = {{1001, 100, 2001, 1}};` (视具体逻辑，也可能是一维数组)
-*   **代码处理**:
-    *   服务端通常提供 `PlayerHelper.delResources(player, int[] costs)` 方法，直接支持解析 `{ItemId, Count, ItemId, Count...}` 格式的数组。
+*   **示例 1 (阶梯消耗)**：
+    *   需求：第 1 次消耗 100 金币（`100002`），第 2 次消耗 200 金币。
+    *   配置：`100002;100|100002;200`
+    *   解析：`int[][] cost = {{100002, 100}, {100002, 200}};`
+*   **示例 2 (混合消耗)**：
+    *   需求：消耗 100 金币（`100002`）和 1 个道具（`200001`）。
+    *   配置：`100002;100;200001;1`（一维扁平偶数组）或 `100002;100|200001;1`（二维数组）
+    *   代码处理：按实际字段维度调用 `PlayerHelper.delResources(player, int[] costs, opType)` 或 `delResources(player, int[][] costs, opType)`（如可能含重复物品 ID，调用前先聚合）。
 
 ***
 
@@ -199,7 +192,7 @@ Map<Integer, List<QuestConfig>> typeMap = QuestManager.instance().getTypes();
 
 | 资产 | 本项目位置 | 使用边界 |
 |---|---|---|
-| 运行 XML | `game/src/main/resources/xml/` | 打包/部署后仍核对实际加载路径和版本，不能把源码目录当成运行中真源 |
+| 运行 XML | `game/src/main/resources/xml/`（主服全量）<br>`login/src/main/resources/xml/`（`copy.bat` 同步 `GlobalConst.xml`，当前仓内含历史全量副本）<br>`protocol/src/main/resources/xml/`（历史/单测资源副本） | `game/tool/copy.bat` 默认把全量 XML 拷到 `game/src/main/resources/xml/`、把 `GlobalConst.xml` 拷到 `login/src/main/resources/xml/`；打包/部署后仍核对实际运行 classpath 与版本 |
 | 生成配置类 | `protocol/src/main/java/cn/game/protocol/generated/config/` | 修改源表后重新生成，禁止手改生成类 |
 | 枚举 / Manager / Helper | 同级 `enume/`、`manager/`、`helper/` | 参数解释与查询方法以当前生成产物为准 |
 | 新 XLSX 辅助生成 | `tools/generate_excel.py` | JSON → XLSX；不是 XLSX → Java/XML 的正式导表器 |

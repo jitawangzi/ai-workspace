@@ -18,9 +18,11 @@
 
 | 场景 | 文档 |
 |---|---|
-| **系统架构全景**（节点拓扑、登录重连、邮箱线程、RPC、存储边界） | [doc/01_系统架构设计全景文档.md](../../doc/01_系统架构设计全景文档.md) |
+| **系统架构全景**（节点拓扑、登录重连、邮箱线程、RPC、存储边界、测试平台） | [doc/01_系统架构设计全景文档.md](../../doc/01_系统架构设计全景文档.md) |
 | **研发流程完整手册**（配表/协议/业务端到端开发示例） | [doc/02_开发流程与研发规范手册.md](../../doc/02_开发流程与研发规范手册.md) |
-| **Windows 本地部署与运维**（中间件、MySQL、Apollo、服务启停） | [doc/deployment_guide.md](../../doc/deployment_guide.md) |
+| **Windows 本地部署、CrossServer 与 GM 控制台**（中间件、MySQL、Apollo、18080 控制台） | [doc/deployment_guide.md](../../doc/deployment_guide.md) |
+| **业务模块全景地图**（27 个 Game 模块、5 个 Cross 子系统、Login 入口归属） | [module-map.md](module-map.md) |
+| **高频开发实战配方**（新增功能闭环、独立表 `DbEntity`、Login 路由、Redis/锁、GM 面板） | [dev-recipes.md](dev-recipes.md) |
 | **独立 Bug 排查、疑似误报分诊、日志定位与最小复现** | [debugging-playbook.md](debugging-playbook.md) |
 | 实现 Handler / Module、事件、GM、物品与资源操作及核心类速查 | [ai-coding.md](ai-coding.md) |
 | Protobuf 协议定义、编号规则与兼容 | [proto-rules.md](proto-rules.md) |
@@ -29,7 +31,7 @@
 | 模拟客户端测试、白盒 SDK 与模块双轨验收（CONTRACT + MATRIX_SCAN） | [client-test.md](client-test.md)、[module-acceptance-tester](../skills/module-acceptance-tester/SKILL.md) |
 | 验证入口环境前提、副作用与清理边界 | [verification-effects.md](verification-effects.md) |
 | 联调运行实例、制品快照与配置证据 | [runtime-verification.md](runtime-verification.md) |
-| 保存快照、幂等、失败与恢复专项验证 | [state-integrity-testing.md](state-integrity-testing.md)、[doc/payment-process-recovery.md](../../doc/payment-process-recovery.md) |
+| 保存快照、幂等、失败恢复与 S2～S4 专项加固技术档案 | [state-integrity-testing.md](state-integrity-testing.md)、[doc/payment-process-recovery.md](../../doc/payment-process-recovery.md)、[doc/payment-save-hardening-notes.md](../../doc/payment-save-hardening-notes.md) |
 | 实际发布、灰度、迁移或恢复演练 | [release-recovery.md](../workflows/release-recovery.md) |
 | 并行开发副本与跨机器 Suspend/Resume | [parallel-development.md](../workflows/parallel-development.md) |
 | 高风险逻辑检查（执行 `logic-auditor` 时） | [logic-audit-game-server.md](logic-audit-game-server.md) |

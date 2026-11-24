@@ -16,7 +16,7 @@
 
 ### 1.2 业务开发模式
 
-**Handler（协议层）** 继承 `GameBaseHandler`，使用 `@Component` 注解标记为单例。AI 的任务是补全 `initialize()` 中的协议注册，并实现处理方法（Invoker）。Handler 的职责是解析参数、获取 Player、校验、调用 Module/Helper、返回 Response。
+**Handler（协议层）** 继承 `GameBaseHandler`，使用 `@Component` 注解标记为单例。AI 的任务是实现 `getModule()` 并在 **`inititialize()`**（注意 `BaseHandler` 历史拼写为双 `ti`，切勿写成 `initialize()`，否则编译报错或不会被框架调用）中通过 `putInvoker(...)` 注册协议，并实现处理方法（Invoker）。Handler 的职责是解析参数、获取 Player、校验、调用 Module/Helper、返回 Response。
 
 **Module（逻辑层）** 由 `Player` 持有，职责是维护玩家状态、状态机流转、事件处理。大部分 Module 数据由框架定时全量持久化，内存修改会进入框架保存流程，但不等于已完成持久化；需要持久性保证时核对保存时机与重载结果。
 
@@ -53,11 +53,18 @@
 
 ### 2.3 异步编程：同步化写法
 
-由于运行在虚拟线程中，禁止使用 `CompletableFuture` 回调链（如 `.thenAccept`）直接修改玩家数据。统一使用 `AsyncUtils.await(...)` 将异步转同步：
+由于运行在虚拟线程中，禁止使用 `CompletableFuture` 回调链（如 `.thenAccept`）直接修改玩家数据。统一使用 `AsyncUtils.await(...)` 将异步转同步。
 
-    RFuture<Long> future = redissonClient.getAtomicLong("key").incrementAndGetAsync();
-    long value = AsyncUtils.await(future); // 虚拟线程挂起，不阻塞物理线程
-    // 继续执行业务逻辑...
+注意 `AsyncUtils.await(...)` 仅直接接收 **`io.vertx.core.Future<T>`**；如果是 Redisson 的 `RFuture` 或 JDK `CompletionStage` / `Future`，必须先通过 `AsyncUtils.toVertxFuture(...)` 适配再 `await`：
+
+```java
+// Vert.x Future（如 DAO / RPC 返回值）可直接 await
+Object dbResult = AsyncUtils.await(daoFuture);
+
+// Redisson RFuture / CompletionStage 须先转换为 Vert.x Future
+RFuture<Long> rf = RedisUtil.getRedis().getAtomicLong("key").incrementAndGetAsync();
+long value = AsyncUtils.await(AsyncUtils.toVertxFuture(rf)); // 虚拟线程挂起，不阻塞物理线程
+```
 
 ### 2.4 定时任务
 
@@ -90,15 +97,16 @@
 
 ### 3.2 扣除资源
 
-使用 `PlayerHelper.delResources` 扣除资源。如果资源不足，方法内部会直接抛出异常。
+使用 `PlayerHelper.delResources` 扣除资源。如果资源不足，方法内部会直接抛出 `LogicException`（`ErrorMsgEnum.resource_not_enough`）。
 
-*   **原子性**: 如果消耗是多个物品 (`int[][]`), **必须**直接调用支持 `int[][]` 的重载方法，**严禁**使用 `for` 循环逐个扣除（会导致部分扣除的原子性问题）。
+*   **批量校验与重复 ID 聚合注意**：如果消耗是多个物品 (`int[][]` 或扁平 `int[]`), **必须**直接调用对应的数组重载方法，**严禁**使用 `for` 循环逐项扣除（避免先扣前项后失败）。
+*   **边界提醒**：`PlayerHelper.isEnough(player, int[][])` 逐项检查余额，**不会自动合并数组中的重复物品 ID**；如果动态拼接的消耗列表可能包含同 ID 多条记录，调用前须先按物品 ID 聚合数量再传给 `delResources`。此外，批量接口也不提供跨模块/跨数据库表的事务回滚语义。
 
 ```java
     // 单个扣除
     PlayerHelper.delResources(player, costId, costNum, OpType.LevelUp);
 
-    // 混合/批量扣除 (原子性保证)
+    // 混合/批量扣除（传入已聚合重复 ID 的数组）
     // costArray 格式: {{ItemId, Count}, {ItemId, Count}...}
     PlayerHelper.delResources(player, costArray, OpType.ShopBuy);
 ```
@@ -116,34 +124,42 @@
 *   **Module**: 负责核心业务逻辑、状态变更、数据持久化。返回值应为 POJO 或通用数据结构 (如 `List<RewardInfo>`)，供 Handler 组装协议。
 
 ```java
+@Component
+public class PetHandler extends GameBaseHandler {
+
+    @Override
+    protected int getModule() {
+        return 0x19;
+    }
+
+    /** 注意父类 BaseHandler 方法名拼写为 inititialize（双 ti），切勿改写为 initialize。 */
+    @Override
+    protected void inititialize() {
+        putInvoker(PbProtocol.PetCompositeRequest_19000001, this::handleProcess);
+    }
+
     private void handleProcess(NetClient client, Object message) {
-        XxxRequest req = (XxxRequest) message;  // ---- 会由代码生成器生成
-	// 声明回包   ---- 会由代码生成器生成
+        XxxRequest req = (XxxRequest) message;
         XxxResponse.Builder resp = XxxResponse.newBuilder();
 
-        // 1. 获取玩家
-        Player player = PlayerManager.getInstance().getPlayer(client.getPlayerId());// ---- 会由代码生成器生成
+        // 获取当前可信玩家（连接归属而非客户端入参）
+        Player player = PlayerManager.getInstance().getPlayer(client.getPlayerId());
 
-        // 2. 基础校验（参数合法性、前置条件(如果有的化)）
-        // 方式A：业务逻辑错误，推荐用 fail 抛出，由框架统一处理,会返回一个通用的错误协议给客户端
+        // 基础参数与前置条件校验：业务错误默认用 player.fail 抛出
         if (req.getCount() <= 0) {
             player.fail(ErrorMsgEnum.param_error);
         }
-        // 方式B：如果协议约定需要回包带错误码
-        // client.sendProtocol(resp, ErrorMsgEnum.param_error.getId()); return;
+        // 若协议明确要求失败时也回传完整 Response，改用 client.sendProtocol(resp.build(), ErrorMsgEnum.param_error.getId()); return;
 
-        // 3. 获取模块（两种方式均可，优先使用 getModule）
-         PetModule module = player.getModule(PetModule.class);
-	// 或者  PetModule module = player.getPetModule();  如果方法存在
-        // 4. 核心逻辑（调用 Module）
+        // 获取对应模块并执行核心逻辑
+        PetModule module = player.getModule(PetModule.class);
         module.upgradePet(req.getPetId());
 
-        // 设置返回值...
-	resp.setXXX
-
-	// 返回客户端返回包
+        // 组装并发送业务响应包
+        // resp.setXXX(...);
         client.sendProtocol(resp.build());
     }
+}
 ```
 
 ---
@@ -292,14 +308,14 @@ Excel 静态数据配置表定义功能的静态数据，每行代表一条记�
 ```java
 // 方法签名
 player.fireAndHandleEvent(EventTypeEnum eventType, Object... params);
-```
-// 调用示例
-// 假设 GetItem 事件定义为：参数0=道具id, 参数1=道具数量
-player.fireAndHandleEvent(EventTypeEnum.GetItem, id, count);
 
-#### 3. 监听事件 (Fire)
-在功能模块中实现 handleEvent 方法，通过 switch-case 结构处理特定事件。
+// 调用示例：假设 GetItem 事件定义为参数0=道具id、参数1=道具数量
+player.fireAndHandleEvent(EventTypeEnum.GetItem, id, count);
 ```
+
+#### 3. 监听事件 (Handle)
+在功能模块中重写 `getEventTypes()` 与 `handleEvent(PlayerEvent)`，通过 `switch-case` 结构处理特定事件。
+```java
 @Override
 public void handleEvent(PlayerEvent event) {
     switch (event.getType()) {
@@ -307,8 +323,7 @@ public void handleEvent(PlayerEvent event) {
             // 根据定义好的顺序获取参数
             int itemId = event.getParameter(0);
             int itemCount = event.getParameter(1);
-
-            // TODO: 执行获得物品后的业务逻辑
+            // 执行获得物品后的业务逻辑
             break;
         }
         case LevelUp: {
@@ -319,7 +334,6 @@ public void handleEvent(PlayerEvent event) {
             break;
     }
 }
-
 ```
 
 ---
@@ -328,12 +342,19 @@ public void handleEvent(PlayerEvent event) {
 
 ### 10.1 时间相关 (`DateUtil`)
 
-**严禁**直接使用 `System.currentTimeMillis()` 或 `new Date()`。必须使用 `cn.game.util.DateUtil`：
+**严禁**直接使用 `System.currentTimeMillis()` 或 `new Date()`。必须使用 `cn.game.util.DateUtil`（已内置虚拟时钟偏移）：
 
-    DateUtil.currentTimeSeconds()  // 当前时间戳（秒）
-    DateUtil.currentTimeMillis()   // 当前时间戳（毫秒）
-    DateUtil.checkCrossTime(...)   // 检查是否跨越特定时间点
-    DateUtil.isSameDay(...)        // 检查是否同一天
+```java
+DateUtil.currentTimeSeconds();   // 当前时间戳（秒）
+DateUtil.currentTimeMillis();    // 当前时间戳（毫秒）
+DateUtil.nowDateTime();          // 当前 LocalDateTime（含虚拟时钟偏移）
+DateUtil.nowDateObj();           // 当前 Date 对象（替代 new Date()）
+DateUtil.getDay();               // 自然日标识（00:00 跨天）
+DateUtil.getDayCustom();         // 05:00 业务日标识
+DateUtil.isSameDay(t1, t2);      // 检查是否同一自然日
+DateUtil.isSameBusinessDay(dt1, dt2); // 检查是否同一 05:00 业务日
+DateUtil.nextDayStartTime(1);    // 次日 00:00 毫秒时间戳
+```
 
 ### 10.2 随机相关 (`Rnd`)
 
@@ -374,9 +395,11 @@ public void handleEvent(PlayerEvent event) {
 ### 12.1 架构与三级安全分级
 
 *   **调度核心 `GmDispatcher`**：统一解析入口，负责命令分词、命名参数与位置参数绑定、类型转换、线程安全派发与全量 Schema 目录自描述暴露。
+*   **命令命名与短名规则**：`GmDispatcher` 为每个 `@GmAction` 注册规范全名 `groupName.actionName`（如 `PlayerGm` 属于 `@GmGroup("player")`，其 `@GmAction("gm.resetModule")` 的规范 ID 为 `player.gm.resetModule`），同时对**不跨组冲突**的 `actionName` 自动注册短名索引（如 `gm.resetModule`、`time.set`、`gm.rng.seed`、`gm.trace.start`、`gm.snapshot.save`、`gm.flushAndColdReload` 等）及 `aliases`，且查找大小写不敏感；因此文档中 `player.time.set` 与 `time.set` 指向同一动作。
+*   **GM Web 工作台入口**：非生产模式启动 `GameServer` 时默认启用内嵌 HTTP 工作台，默认地址 **`http://127.0.0.1:18080/gm-console`**（配置键 `gm.http.enabled/port/host/requireAuth/opsToken`，详见 [doc/deployment_guide.md](../../doc/deployment_guide.md)）。
 *   **安全分级体系 `GmSecurityTier`**：
-    *   **`DEV_TEST_ONLY`**（研发与测试专用）：全服/个人高危写操作、模块重置（`player.gm.resetModule`）、时间偏移修改（`player.time.set/offset`）、可控随机序列注入（`player.gm.rng.*`）、请求Trace录制（`player.gm.trace.*`）及快照还原（`player.gm.snapshot.*`）。**在生产环境（`RunMode.PRODUCTION`）启动或自省时自动强行裁剪与屏蔽，严防外部入侵**。
-    *   **`OPS_SAFE`**（只读运维排查）：支持生产环境安全执行的只读指令，如配表自描述与分页检索（`config.tables`、`config.list`）、协议目录自省（`proto.catalog`）、时间查询（`player.time.status`）、修数算子清单与审计日志查询（`repair.list`、`repair.auditlog`）等。
+    *   **`DEV_TEST_ONLY`**（研发与测试专用）：全服/个人高危写操作、模块重置（`gm.resetModule`）、时间偏移修改（`time.set`/`time.offset`/`time.reset`）、可控随机序列注入（`gm.rng.*`）、请求 Trace 录制（`gm.trace.*`）及快照还原/冷重载（`gm.snapshot.*`、`gm.flushAndColdReload`）。**在生产环境（`RunMode.PRODUCTION`）启动或自省时自动强行裁剪与屏蔽，严防外部入侵**。
+    *   **`OPS_SAFE`**（只读运维排查）：支持生产环境安全执行的只读指令，如配表自描述与分页检索（`config.tables`、`config.list`、`config.get`）、协议与错误码目录自省（`proto.catalog`、`proto.errors`）、时间查询（`time.status`）、修数算子清单与审计日志查询（`repair.list`、`repair.auditLog`）等。
     *   **`OPS_REPAIR`**（受控具名修数）：生产环境下**唯一允许**的写操作，严禁开放通用任意写接口。修数必须封装为具名算子（`OpsRepairService`），强制执行 `dryRun` 沙箱内存演练、JSON Diff 比对、`PlayerWriteGuard` 隔离落盘与 JSONL 审计日志记录。
 
 ### 12.2 注解体系与开发规范
@@ -400,8 +423,8 @@ public void handleEvent(PlayerEvent event) {
 
 ### 12.3 时间与可控随机源收敛强制约定
 
-*   **时间统一收敛**：业务代码中**严禁直调** `System.currentTimeMillis()` 或 `new Date()`，必须统一调用 `DateUtil.currentTimeMillis()` / `DateUtil.toDate()`，以便研发与测试环境通过 `player.time.set` 进行时间快进与跨天仿真。
-*   **随机源统一收敛**：业务逻辑中**严禁私自** `new Random()` 或调用未经收敛的外部伪随机接口，必须统一使用 `Rnd` 系列方法。`Rnd` 支持在测试环境中注入确定性种子（`player.gm.rng.seed`）或指定预置随机数序列（`player.gm.rng.sequence`），以保障复杂业务测试的确定性复现。
+*   **时间统一收敛**：业务代码中**严禁直调** `System.currentTimeMillis()` 或 `new Date()`，必须统一调用 `DateUtil.currentTimeMillis()` / `DateUtil.currentTimeSeconds()` / `DateUtil.nowDateTime()` / `DateUtil.nowDateObj()`，以便研发与测试环境通过 `time.set` / `time.offset` 进行时间快进与跨天仿真。
+*   **随机源统一收敛**：业务逻辑中**严禁私自** `new Random()` 或调用未经收敛的外部伪随机接口，必须统一使用 `Rnd` 系列方法。`Rnd` 支持在测试环境中注入确定性种子（`gm.rng.seed`）或指定预置随机数序列（`gm.rng.sequence`），以保障复杂业务测试的确定性复现。
 
 ### 12.4 生产受控具名修数开发规范 (OPS_REPAIR)
 
@@ -425,32 +448,18 @@ public void handleEvent(PlayerEvent event) {
 ### 13.2 核心物品类型
 
 #### 13.2.1 资源类 (GoodsType = 1, Asset)
-玩家拥有的数值型资源，存储在 `CurrencyModule` 中。
-*   **Type 1 (普通货币)**: 金币、钻石、代币等，通常用于消耗。
-*   **Type 2 (经验)**: 玩家经验、果树经验等。**特殊逻辑**: 添加此类资源时会自动触发升级逻辑。
-*   **Type 3 (体力)**: 可自动恢复，有上限。
-*   **Type 4 (积分)**: 任务积分、活动积分。
-*   **Type 5 (次数)**: 如砍价次数等特殊计数。
+玩家拥有的数值型资源，定义见枚举 `cn.game.protocol.generated.enume.Asset`，存储在 `CurrencyModule` 中。按 `Asset.Type` 分为三类：
+*   **Type 1 (普通货币 / 积分 / 次数)**：元宝（`Asset.diamond=100001`）、金币（`Asset.gold=100002`）、代金券（`Asset.Vouchers=100008`）、各类代币、活动/任务积分与计数型资源均归入此类型。
+*   **Type 2 (经验)**：玩家经验（`Asset.playerExp=100201`）、VIP 经验（`Asset.VIPExp=100007`）、人参果树经验等。**特殊逻辑**：添加经验类资源时会自动触发升级/等级处理链。
+*   **Type 3 (体力)**：玩家体力（`Asset.playerEnergy=100301`）、游历体力（`Asset.TravelStamina=100303`），支持定时恢复与上限控制。
 
 #### 13.2.2 道具类 (GoodsType = 2, Item)
 可堆叠的物品，存储在 `ItemModule` 中。无唯一实例 ID，仅有 ConfigId。
-细分类型 (`ItemType`):
-*   `1`: 英雄突破通用道具
-*   `2`: 英雄升级
-*   `3`: 请神道具
-*   `4`: 任选宝箱
-*   `7`: 随机道具
-*   `8`: 掉落包 (自动开启)
-*   `11`: 神将碎片
-*   `12`: 灵宠碎片
+细分类型 (`ItemType`) 以最新 `Item.xml` 与 `ItemModule` 为准，常见如：
+*   `1`: 英雄突破通用道具、`2`: 英雄升级、`3`: 请神道具、`4`: 任选宝箱、`7`: 随机道具、`8`: 掉落包 (自动开启)、`11`: 神将碎片、`12`: 灵宠碎片。
 
 #### 13.2.3 实体类物品
-拥有独立实例或特定业务逻辑的物品，通常每个大类对应一个 `GoodsModule` 子类。
-*   **装备 (Equipment)**
-*   **英雄 (Hero)**
-*   **灵宠 (Pet)**
-*   **皮肤 (Skin)**
-*   **宝石 (Gem)**
+拥有独立实例或特定业务逻辑的物品，通常每个大类对应一个 `GoodsModule` 子类，枚举值以 `GoodsTypeEnum` 为准（如 `Hero(3)`、`HeadBox(4)`、`Pet(6)`、`HeroSkin(8)`、`HCHero(9)`、`HeadPortrait(13)`、`Figure(14)`、`Gem(15)`、`DefenceSkin(18)`、`Secretscript(35)`、`Merge_Equip(51)`、`Skin(88)`、`FairyFriend(100)` 等；`Equipment(7)` / `Dragon(11)` / `Sword(36)` 当前在 `GoodsTypeEnum` 注释中标明暂未启用）。
 
 ### 13.3 模块化设计
 
@@ -458,11 +467,18 @@ public void handleEvent(PlayerEvent event) {
 
 ---
 
-## 14. 跨服与全局社交系统约定
+## 14. 跨服与全局社交/活动系统约定
 
-全局/社交系统（如公会 `Guild`、跨服排行/匹配等）驻留在 `CrossServer` 或对应全局节点，并发模型同样按实体 ID（如 `guildId`）串行执行：
-- 在 `GameServer` 中严禁直接访问跨服本地内存单例（如 `GuildService.getInstance()` / `GuildManager`）；
-- 所有跨服读写统一通过 `ServerHelper` 提供的远程 RPC 代理（如 `ServerHelper.getGuildProxy(guildId)` / `ServerHelper.getCrossServerInterface()`）配合 `AsyncUtils.await(...)` 调用。
+跨服共享状态（如公会 `Guild`、跨服活动 `CrossActivity`、跨服匹配等）驻留在 `CrossServer` 节点，分布式对象类型由 `DistributedObjectType` 定义（`PLAYER`、`GUILD`、`CROSS_ACTIVITY`），并发模型同样按对象 ID（如 `guildId` / `activityUid`）串行执行：
+- 在 `GameServer` 中严禁直接访问跨服本地内存单例（如 `GuildService.getInstance()` / `GuildManager` / `CrossActivityServiceImpl.getInstance()`）；
+- 所有跨服读写统一通过 `ServerHelper` 提供的远程 RPC 代理入口，配合 `AsyncUtils.await(...)`（针对返回 `Future` 的异步接口）调用：
+  - 公会代理：`ServerHelper.getGuildProxy(guildId)`
+  - 跨服活动定向代理（路由缺失快速失败）：`ServerHelper.getCrossActivityProxy(activityUid)`
+  - 跨服活动负载均衡代理（仅供创建分派）：`ServerHelper.getCrossActivityBalanceProxy()`
+  - 跨服广播/遍历节点：`ServerHelper.getAllServerInterface(ServerType.Cross, XxxInterface.class)`
+  - 跨服玩家代理：`ServerHelper.getPlayerProxy(playerId)`、登录服代理：`ServerHelper.getRemoteLoginInterfaceProxy()`
+
+完整 27 个 Game 业务模块、5 个 Cross 子系统与 Login 模块归属地图见 [module-map.md](module-map.md)；独立表（`DbEntity`）、`LoginServer`、`RedisUtil`/`LockUtil` 与最小闭环开发模板见 [dev-recipes.md](dev-recipes.md)。
 
 ---
 
@@ -492,5 +508,8 @@ public void handleEvent(PlayerEvent event) {
 | `Rnd` | 统一随机与可控随机 | `util/src/main/java/cn/game/util/Rnd.java` | 禁直接用 `Math.random` / 未受控随机源 |
 | `CborSnappyUtil` | 模块快照序列化与冷重载 | `util/src/main/java/cn/game/util/CborSnappyUtil.java` | 单测验证常规模块持久化冷重载使用 `decompress(...)` |
 | `JsonUtil` / `GameUtil` | JSON 与通用数组工具 | `util/src/main/java/cn/game/util/JsonUtil.java`、`GameUtil.java` | 复用既有数组合并/缩放工具 |
-| `RedisUtil` | Redisson 客户端入口 | `util/src/main/java/cn/game/util/RedisUtil.java` | 异步 Redis 操作配合 `AsyncUtils.await(...)` |
+| `RedisUtil` / `LockUtil` | Redisson 客户端与分布式锁 | `util/src/main/java/cn/game/util/RedisUtil.java`、`LockUtil.java` | 异步 `RFuture` 须先 `AsyncUtils.toVertxFuture(...)` 再 `await`；Key 统一走 `CacheType.XXX.key(...)` |
+| `CacheType` / `IdCache` | Redis Key 枚举与分布式路由 | `core/src/main/java/cn/game/core/cache/CacheType.java`、`id/IdCache.java` | 新增全局 Key 在 `CacheType` 统一登记；分布式对象类型见 `DistributedObjectType` |
+| `GmDispatcher` / `GmWebConsoleServer` | 注解 GM 调度与 Web 控制台 | `game/src/main/java/cn/game/games/net/game/gm/GmDispatcher.java`、`web/GmWebConsoleServer.java` | 新 GM 用 `@GmGroup`/`@GmAction`/`@GmParam`；控制台默认 `http://127.0.0.1:18080/gm-console` |
+| `ModuleAcceptanceEngine` | 进程内模块双轨验收引擎 | `game/src/main/java/cn/game/games/net/game/gm/acceptance/ModuleAcceptanceEngine.java` | 模块级 `CONTRACT` + `MATRIX_SCAN` 验收与沙盒隔离 |
 | `ErrorMsgEnum` / `OpType` | 通用错误码与流水原因枚举 | `protocol/src/main/java/cn/game/protocol/manual/ErrorMsgEnum.java`、`OpType.java` | 优先复用已有通用错误码，不随意造重复码 |
