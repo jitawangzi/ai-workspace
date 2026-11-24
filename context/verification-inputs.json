@@ -3,7 +3,7 @@
   "include": [
     ".ai-workspace/README.md",
     ".ai-workspace/context",
-    ".ai-workspace/schemas",
+    ".ai-workspace/skills",
     ".ai-workspace/scripts",
     ".ai-workspace/workflows",
     ".ai-workspace/commit.cmd",

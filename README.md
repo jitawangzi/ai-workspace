@@ -12,9 +12,8 @@
 .ai-workspace/
 ├── context/       本服领域知识、编码规范、业务模式、排障手册与验证 Profile
 ├── skills/        本服自建 Skill 真源（由安装器投影至宿主 .agents/ 与 .claude/）
-├── schemas/       项目 Schema 扩展说明（通用 Schema 真源在 .ai-sop/schemas/）
 ├── scripts/       本服工作区校验、JUnit 报告门禁、本地运行时与回归脚本
-├── workflows/     并行开发、发布恢复与历史迁移记录
+├── workflows/     并行开发与发布恢复指南
 ├── specs/         独立规格与任务仓库（外层 Git 忽略，仅保存本服功能/平台资料）
 ├── commit.cmd     仅提交已手动暂存文件并推送
 └── pull.cmd       干净工作树的 fast-forward 拉取
@@ -57,5 +56,3 @@ git -C .ai-workspace diff --cached
 3. 克隆 `ai-workspace.git` 到 `.ai-workspace/`，单独克隆 `game_specs.git` 到 `.ai-workspace/specs/`。
 4. 从宿主根运行 `Verify`、`Doctor` 与 `workspace-contract` 校验；客户端 Hook 按引擎 `HARNESS_ADAPTERS` 文档启用。
 5. 跨机器续做任务须先在原处 `Suspend`，同步代码与 `specs` 后在接收处 `Resume`，不得复制本机 Session/Grant 权限文件。
-
-> 历史背景：本工作区由早期项目迁移适配而来，完整迁移对照与复核记录留档于 [migration-20261021.md](workflows/migration-20261021.md) 与 [migration-audit-20261022.md](workflows/migration-audit-20261022.md)。

@@ -8,7 +8,7 @@
 | 场景 | 规则 |
 |---|---|
 | 公共动作通知多模块、登录与跨天联动 | [事件](business-patterns/event-system.md) |
-| 开放、资格、进度与完成判定 | [条件](business-patterns/condition-system.md)及[项目条件体系](systems/condition-system.md) |
+| 开放、资格、进度与完成判定 | [条件系统模式与架构](business-patterns/condition-system.md) |
 | 全服/个人活动、轮次与收尾 | [活动](business-patterns/activity-pattern.md) |
 | 任务状态、分组推进、晚开启补判 | [任务](business-patterns/quest-pattern.md) |
 | 总红点、模块聚合、已读状态 | [红点](business-patterns/red-point-pattern.md) |

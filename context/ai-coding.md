@@ -458,31 +458,17 @@ public void handleEvent(PlayerEvent event) {
 
 ---
 
-## 14. 暂不涉及的内容
+## 14. 跨服与全局社交系统约定
 
-全局/社交系统处理（Global/Guild/Rank）暂时较少，先由人工开发。其并发模型与玩家系统相同，都是通过 ID 分配到不同队列实现串行化。
+全局/社交系统（如公会 `Guild`、跨服排行/匹配等）驻留在 `CrossServer` 或对应全局节点，并发模型同样按实体 ID（如 `guildId`）串行执行：
+- 在 `GameServer` 中严禁直接访问跨服本地内存单例（如 `GuildService.getInstance()` / `GuildManager`）；
+- 所有跨服读写统一通过 `ServerHelper` 提供的远程 RPC 代理（如 `ServerHelper.getGuildProxy(guildId)` / `ServerHelper.getCrossServerInterface()`）配合 `AsyncUtils.await(...)` 调用。
 
 ---
 
 ## 15. 条件系统架构 (Condition System Architecture)
 
-条件系统（任务/成就/功能开启）采用**多态架构**，核心逻辑分散在各个 `Condition` 实现类中。
-
-> **详细文档**: 完整开发指南与类型说明请参阅 [Condition System Guide](systems/condition-system.md)
-
-### 15.1 核心机制
-*   **多态分发**: `PlayerHelper.getConditionCount` 通过 `ClassManager` 查找具体的 `Condition` 实例，调用其 `getValue` 方法。
-*   **去硬编码**: 禁止在 `PlayerHelper` 中写 `switch-case` 逻辑。新增条件类型需创建对应的 `Condition` 子类。
-
-### 15.2 两类检查模式
-1.  **事件触发 (countType=0)**: 依赖具体任务实例的状态（如"接任务后击杀"），无法直接查询数值。
-2.  **数值检查 (countType=1/2)**: 无状态检查，基于玩家实时数据（如等级、物品）或累计数据。
-
-### 15.3 开发新条件
-1.  在 `cn.game.games.net.game.module.quest.require` 包下创建新类。
-2.  继承 `AbstractCondition` 或 `AbstractCumulativeCondition`。
-3.  添加 `@ConditionType(type = ...)` 注解。
-4.  实现 `getValue(Player player, ConditionConfig config)` 方法。
+条件系统（任务/成就/功能开启/活动资格）采用基于 `@ConditionType` 与 `ClassManager` 的多态架构，禁止在 `PlayerHelper` 中写 `switch-case` 硬编码。完整架构、三种 `countType` 模式、代码示例与反例清单见唯一真源：[条件系统模式与架构指南](business-patterns/condition-system.md)。
 
 ---
 

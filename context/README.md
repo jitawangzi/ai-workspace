@@ -25,22 +25,14 @@
 | 实现 Handler / Module、事件、GM、物品与资源操作及核心类速查 | [ai-coding.md](ai-coding.md) |
 | Protobuf 协议定义、编号规则与兼容 | [proto-rules.md](proto-rules.md) |
 | 静态配表结构、生成类与校验规则 | [config-rules.md](config-rules.md) |
-| 活动、任务、事件、条件、奖励、红点业务模式 | [business-patterns/README.md](business-patterns/README.md) |
-| 条件系统底层多态架构详情（`countType` / `ClassManager`） | [systems/condition-system.md](systems/condition-system.md) |
+| 活动、任务、事件、条件、奖励、红点业务模式（含条件系统多态架构） | [business-patterns/README.md](business-patterns/README.md) |
 | 模拟客户端测试、白盒 SDK 与模块双轨验收（CONTRACT + MATRIX_SCAN） | [client-test.md](client-test.md)、[module-acceptance-tester](../skills/module-acceptance-tester/SKILL.md) |
 | 验证入口环境前提、副作用与清理边界 | [verification-effects.md](verification-effects.md) |
 | 联调运行实例、制品快照与配置证据 | [runtime-verification.md](runtime-verification.md) |
 | 保存快照、幂等、失败与恢复专项验证 | [state-integrity-testing.md](state-integrity-testing.md)、[doc/payment-process-recovery.md](../../doc/payment-process-recovery.md) |
 | 实际发布、灰度、迁移或恢复演练 | [release-recovery.md](../workflows/release-recovery.md) |
+| 并行开发副本与跨机器 Suspend/Resume | [parallel-development.md](../workflows/parallel-development.md) |
 | 高风险逻辑检查（执行 `logic-auditor` 时） | [logic-audit-game-server.md](logic-audit-game-server.md) |
 | 验证夹具、增量复审、打包核对与底层诊断细节 | [tooling-reference.md](tooling-reference.md) |
 
-### 流程与历史索引
-
-| 场景 | 文档 |
-|---|---|
-| 流程产物、档位文档映射与旧规格接入 | [ai-automation-workflow.md](ai-automation-workflow.md) |
-| 并行开发副本与跨机器 Suspend/Resume | [parallel-development.md](../workflows/parallel-development.md) |
-| 早期迁移记录与审查补充（仅作历史背景） | [migration-20261021.md](../workflows/migration-20261021.md)、[migration-audit-20261022.md](../workflows/migration-audit-20261022.md) |
-
-> **事实优先原则**：API 快照与文档示例必须结合当前源码核对；遇到文档与现行实现冲突先查证，不能为迎合旧文字改坏正确代码。中文注释、异常日志等规范以 [coding-style.md](coding-style.md) 为准。
+> **事实优先原则**：文档示例必须结合当前源码核对；遇到文档与现行实现冲突先查证，不能为迎合旧文字改坏正确代码。中文注释、异常日志等规范以 [coding-style.md](coding-style.md) 为准。

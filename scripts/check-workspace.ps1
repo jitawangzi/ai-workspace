@@ -42,10 +42,10 @@ if ($Mode -eq 'Syntax') {
     $policySchema = Join-Path $hostRoot '.ai-sop/schemas/verification-inputs.schema.json'
     Assert-Contract (Test-Json -Json ([IO.File]::ReadAllText($policyPath)) -SchemaFile $policySchema) 'Verification input policy violates engine Schema'
 } else {
-    foreach ($relative in @('context', 'schemas', 'scripts', 'specs', 'workflows')) {
+    foreach ($relative in @('context', 'skills', 'scripts', 'specs', 'workflows')) {
         Assert-Contract (Test-Path -LiteralPath (Join-Path $aiRoot $relative) -PathType Container) "Missing directory: $relative"
     }
-    foreach ($relative in @('project-summary.md', 'coding-style.md', 'ai-coding.md', 'client-test.md', 'config-rules.md', 'proto-rules.md', 'systems/condition-system.md')) {
+    foreach ($relative in @('project-summary.md', 'coding-style.md', 'ai-coding.md', 'client-test.md', 'config-rules.md', 'proto-rules.md', 'business-patterns/condition-system.md')) {
         Assert-Contract (Test-Path -LiteralPath (Join-Path $aiRoot "context/$relative") -PathType Leaf) "Legacy knowledge missing: $relative"
     }
     function Get-MarkdownAnchors([string]$FilePath, [hashtable]$Cache) {
@@ -89,7 +89,7 @@ if ($Mode -eq 'Syntax') {
         Get-ChildItem -LiteralPath (Join-Path $hostRoot 'doc') -File -Filter '*.md'
         Get-Item -LiteralPath (Join-Path $aiRoot 'README.md')
         Get-Item -LiteralPath (Join-Path $aiRoot 'specs/README.md')
-        foreach ($directory in @('context', 'workflows', 'schemas', 'skills')) {
+        foreach ($directory in @('context', 'workflows', 'skills')) {
             $dirPath = Join-Path $aiRoot $directory
             if (Test-Path -LiteralPath $dirPath -PathType Container) {
                 Get-ChildItem -LiteralPath $dirPath -Recurse -File -Filter '*.md'

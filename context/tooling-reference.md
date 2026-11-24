@@ -5,7 +5,7 @@
 
 ## 1. 输入指纹范围与大型项目起点预算
 
-- 输入指纹在引擎默认范围之上，通过 [verification-inputs.json](verification-inputs.json) 显式纳入本工作区的 `README.md`、`context`、`schemas`、`scripts` 和 `workflows`，确保知识与脚本变动能使旧证据过期。
+- 输入指纹在引擎默认范围之上，通过 [verification-inputs.json](verification-inputs.json) 显式纳入本工作区的 `README.md`、`context`、`skills`、`scripts` 和 `workflows`，确保知识、自建 Skill 与脚本变动能使旧证据过期。
 - 仅额外排除宿主根 `logs/`（由 `GameSSLogger`、`LoggerManager` 和 Log4j2 写入，已被宿主 Git 忽略，包含不符合默认 `.log` 后缀的实时日志）。日志配置和 Java 源码仍纳入检查。
 - 本项目在 [start-inputs.json](start-inputs.json) 为新 T1/T2 Start 配置 `15000ms`、`128MiB` 预算，适配约 85MiB 输入（默认档位仍为 T2）。完整输入未能在预算内读完时仍记录 `UNAVAILABLE`，不保存部分起点、不阻断普通测试；底层单次 IO 不提供硬超时保证。
 - `Inputs` 完整诊断提供文件数、读取量、路径解析和哈希耗时（历史测量参考：3188 文件、89,358,100 字节，单次诊断约 1.84 秒，仅作观测不作承诺）。需要完整起点时在修改前使用 `Start -CaptureBaseline`，不用后续快照补造起点。
