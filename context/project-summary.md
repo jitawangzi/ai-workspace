@@ -33,7 +33,7 @@
 - **流程 SOP 入口**：[AGENTS.md](../../AGENTS.md)（通用引擎在 `.ai-sop/`，投影产物禁止手改）
 - **知识总索引（含 `doc/` 与排障手册）**：[context/README.md](README.md)
 - **工具链、验证 Profile 与五仓归属**：[project-tooling.md](project-tooling.md)
-- **编码规范与 API 白名单**：[coding-style.md](coding-style.md) · [ai-coding.md](ai-coding.md) · [api-whitelist.md](api-whitelist.md)
+- **编码规范与核心类入口**：[coding-style.md](coding-style.md) · [ai-coding.md](ai-coding.md)
 - **协议、配表与测试**：[proto-rules.md](proto-rules.md) · [config-rules.md](config-rules.md) · [client-test.md](client-test.md)
 - **本服功能规格与任务**：[specs/README.md](../specs/README.md)（`.ai-workspace/specs/features/`）
 

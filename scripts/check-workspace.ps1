@@ -45,7 +45,7 @@ if ($Mode -eq 'Syntax') {
     foreach ($relative in @('context', 'schemas', 'scripts', 'specs', 'workflows')) {
         Assert-Contract (Test-Path -LiteralPath (Join-Path $aiRoot $relative) -PathType Container) "Missing directory: $relative"
     }
-    foreach ($relative in @('project-summary.md', 'coding-style.md', 'ai-coding.md', 'api-whitelist.md', 'client-test.md', 'config-rules.md', 'proto-rules.md', 'systems/condition-system.md')) {
+    foreach ($relative in @('project-summary.md', 'coding-style.md', 'ai-coding.md', 'client-test.md', 'config-rules.md', 'proto-rules.md', 'systems/condition-system.md')) {
         Assert-Contract (Test-Path -LiteralPath (Join-Path $aiRoot "context/$relative") -PathType Leaf) "Legacy knowledge missing: $relative"
     }
     function Get-MarkdownAnchors([string]$FilePath, [hashtable]$Cache) {
@@ -163,7 +163,6 @@ if ($Mode -eq 'Syntax') {
             Assert-Contract (Test-Path -LiteralPath (Join-Path $repo $relative) -PathType Leaf) "Missing sync entry: $repo/$relative"
         }
     }
-    Assert-Contract ([IO.File]::ReadAllText((Join-Path $hostRoot 'export_api.bat')).Contains('.ai-workspace\context\api-whitelist.md')) 'API export still targets inactive context'
     & pwsh -NoProfile -File (Join-Path $hostRoot 'tools/ai-sop/install-ai-sop.ps1') -Mode Git -Action Verify -WorkspaceRoot $hostRoot -OutputFormat Json
     Assert-Contract ($LASTEXITCODE -eq 0) 'Installed SOP projections or version lock are inconsistent'
 }

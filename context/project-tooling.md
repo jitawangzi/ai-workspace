@@ -55,7 +55,7 @@ mvn -B '-DskipTests' test-compile
   ```
 - **运行实例联调**：`run_server.ps1` 默认仅 `Prepare` 独立制品快照；`Start`/`Stop` 规则见 [runtime-verification.md](runtime-verification.md)。
 - **协议生成**：根 `protocol.bat`（先核对 `protocol/` 独立仓库状态；生成的 Java 代码及生效配置属于实现，不能当文档延期）。
-- **API 白名单导出**：根 `export_api.bat` 扫描 `game`/`login`/`util` 的 `@AiExport` 输出到 `.ai-workspace/context/api-whitelist.md`；生成后须检查 diff。
+- **核心 API 查询**：不维护静态全量签名快照；通过 [ai-coding.md](ai-coding.md) 第 16 节类路径速查表直接读取最新源码。
 
 ## 5. 五仓 Git 归属与同步
 

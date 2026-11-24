@@ -22,7 +22,7 @@
 | **研发流程完整手册**（配表/协议/业务端到端开发示例） | [doc/02_开发流程与研发规范手册.md](../../doc/02_开发流程与研发规范手册.md) |
 | **Windows 本地部署与运维**（中间件、MySQL、Apollo、服务启停） | [doc/deployment_guide.md](../../doc/deployment_guide.md) |
 | **独立 Bug 排查、疑似误报分诊、日志定位与最小复现** | [debugging-playbook.md](debugging-playbook.md) |
-| 实现 Handler / Module、事件、GM、物品与资源操作 | [ai-coding.md](ai-coding.md)、[api-whitelist.md](api-whitelist.md) |
+| 实现 Handler / Module、事件、GM、物品与资源操作及核心类速查 | [ai-coding.md](ai-coding.md) |
 | Protobuf 协议定义、编号规则与兼容 | [proto-rules.md](proto-rules.md) |
 | 静态配表结构、生成类与校验规则 | [config-rules.md](config-rules.md) |
 | 活动、任务、事件、条件、奖励、红点业务模式 | [business-patterns/README.md](business-patterns/README.md) |

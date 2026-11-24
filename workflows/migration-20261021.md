@@ -9,7 +9,7 @@
 | project-summary.md | [项目概览](../context/project-summary.md) | 保留，修正缺失的旧 SOP 链接，补新布局和事实边界 |
 | coding-style.md | [编码规范 Part B](../context/coding-style.md) | 保留异常/API/资源/JavaDoc，澄清 notify 与响应填充职责 |
 | ai-coding.md | [完整开发知识](../context/ai-coding.md) | 保留架构、线程、事件、GM、物品、条件；修复未闭合代码块，区分内存变更和完成保存 |
-| api-whitelist.md | [API 快照](../context/api-whitelist.md) | 保留全部签名，去失效绝对路径，标明需核对当前源码 |
+| api-whitelist.md | 已退场（改由 [完整开发知识 §16](../context/ai-coding.md) 类路径速查表直查源码） | 2026-11-24 下线静态签名快照，消除过期噪音 |
 | client-test.md | [模拟客户端测试](../context/client-test.md) | 保留客户端 API/GM，修复协议链接；取消“跳过目标请求也算通过”的旧表述 |
 | config-rules.md | [配置指南](../context/config-rules.md) | 保留生成链与表规范，补真实来源/隔离测试约束 |
 | proto-rules.md | [协议规范](../context/proto-rules.md) | 保留 Protobuf 编号、生成和同步方式，补兼容与接收方视角 |

@@ -483,3 +483,28 @@ public void handleEvent(PlayerEvent event) {
 2.  继承 `AbstractCondition` 或 `AbstractCumulativeCondition`。
 3.  添加 `@ConditionType(type = ...)` 注解。
 4.  实现 `getValue(Player player, ConditionConfig config)` 方法。
+
+---
+
+## 16. 核心基础设施类路径速查表（源码为唯一真源）
+
+> 不维护静态方法签名快照；需要确认重载参数与行为时，直接读取下方对应源码。
+
+| 类名 | 职责 | 源码路径 | 红线 / 关键提醒 |
+|---|---|---|---|
+| `GameBaseHandler` | 协议处理器基类 | `game/src/main/java/cn/game/games/net/game/handler/GameBaseHandler.java` | 单例无状态，禁止保存请求级可变字段 |
+| `Player` | 玩家根对象 | `game/src/main/java/cn/game/games/cache/entity/Player.java` | 仅在所属虚拟线程队列修改；业务报错用 `player.fail(ErrorMsgEnum.xxx)` |
+| `PlayerManager` | 在线玩家管理 | `game/src/main/java/cn/game/games/net/game/manager/PlayerManager.java` | 按 `playerId` 获取在线实例 |
+| `BasePlayerModule` | 玩家模块默认基类 | `game/src/main/java/cn/game/games/core/BasePlayerModule.java` | 框架定时全量快照保存，不手工强加全量 `save()` |
+| `GoodsModule` | 物品/背包容器基类 | `game/src/main/java/cn/game/games/core/GoodsModule.java` | 业务发奖/扣费统一走 `PlayerHelper`，不直接绕过操作 |
+| `DbEntity` | 独立表实体契约 | `game/src/main/java/cn/game/games/cache/base/DbEntity.java` | 仅 `alwaysStoreDataInStandaloneTable()` 模块走此显式读写 |
+| `PlayerHelper` | 资源、条件、发包公共入口 | `game/src/main/java/cn/game/games/net/game/helper/PlayerHelper.java` | 批量扣除用数组重载，禁 `for` 循环逐项扣；禁直调 `RewardHelper` |
+| `ServerHelper` | 跨服 RPC / 节点代理入口 | `game/src/main/java/cn/game/games/net/game/helper/ServerHelper.java` | 跨服状态一律走远程代理，禁在 GameServer 本地直取跨服单例 |
+| `ServerContext` | 线程队列与服务上下文 | `core/src/main/java/cn/game/core/base/ServerContext.java` | 外部回调先 `getProcessor().process(playerId, ...)` 回投队列 |
+| `AsyncUtils` | 虚拟线程异步转同步 | `core/src/main/java/cn/game/core/util/AsyncUtils.java` | 统一 `AsyncUtils.await(...)`，禁 `CompletableFuture` 回调改玩家 |
+| `DateUtil` | 统一时间与虚拟时钟 | `util/src/main/java/cn/game/util/DateUtil.java` | 禁 `System.currentTimeMillis()`；区分自然日与 05:00 业务日 |
+| `Rnd` | 统一随机与可控随机 | `util/src/main/java/cn/game/util/Rnd.java` | 禁直接用 `Math.random` / 未受控随机源 |
+| `CborSnappyUtil` | 模块快照序列化与冷重载 | `util/src/main/java/cn/game/util/CborSnappyUtil.java` | 单测验证常规模块持久化冷重载使用 `decompress(...)` |
+| `JsonUtil` / `GameUtil` | JSON 与通用数组工具 | `util/src/main/java/cn/game/util/JsonUtil.java`、`GameUtil.java` | 复用既有数组合并/缩放工具 |
+| `RedisUtil` | Redisson 客户端入口 | `util/src/main/java/cn/game/util/RedisUtil.java` | 异步 Redis 操作配合 `AsyncUtils.await(...)` |
+| `ErrorMsgEnum` / `OpType` | 通用错误码与流水原因枚举 | `protocol/src/main/java/cn/game/protocol/manual/ErrorMsgEnum.java`、`OpType.java` | 优先复用已有通用错误码，不随意造重复码 |
