@@ -58,7 +58,7 @@ description: 模块级双轨自动化验收与多态配表矩阵扫描测试专�
    - 列出 `inititialize()` 中注册的全部 `putInvoker(PbProtocol.XxxRequest, this::xxx)` 协议入口；
    - 梳理每个入口的前置校验链（功能开启 `player.isFuncOpen`、`Condition` 条件检查、次数/限购上限、CD 冷却、资源消耗 `PlayerHelper.delResources` 或 `player.pay`）。
 3. **盘点跨服 RPC 与真实服务器拓扑依赖（Cluster Topology & Cross-Server RPC）**：
-   - 检查 `*Handler.java` / `*Module.java` / `*Helper.java` 是否调用了 `ServerHelper.getGuildProxy(...)`、`ServerHelper.getCrossServerInterface()`、`ServerHelper.getRemoteInterfaceProxy(...)`、`VxHolder.requestRemoteServer(ServerType.Cross, ...)` 等跨服远程调用；
+   - 检查 `*Handler.java` / `*Module.java` / `*Helper.java` 是否调用了 `ServerHelper.getGuildProxy(...)`、`ServerHelper.getCrossActivityProxy(...)`、`ServerHelper.getAllServerInterface(ServerType.Cross, ...)`、`ServerHelper.getRemoteInterfaceProxy(...)`、`VxHolder.requestRemoteServer(ServerType.Cross, ...)` 等跨服远程调用；
    - 在套件中显式重写 `getRequiredServerTypes()`：
      - 纯本服模块默认返回 `List.of(ServerType.Game)`；
      - 涉及跨服节点（如公会 `Guild`、跨服排行/匹配/聊天等）的模块，**必须返回 `List.of(ServerType.Game, ServerType.Cross)`**（如还需登录服交互则加上 `ServerType.Login`），使验收引擎在正式集群验收（`requireLiveCluster = true`）时自动校验对应 `ServerType` 节点是否已在 `ActiveServerListManager` 中真实上线。
@@ -79,11 +79,11 @@ description: 模块级双轨自动化验收与多态配表矩阵扫描测试专�
    - **正向主链路（Happy Path）**：调用 `SandboxResetter.resetModules(player, ...)` 重置模块 $\to$ 准备精确资源与前置状态 $\to$ 调用静态方法 `InProcessAcceptanceKit.invokeProto(player.getPlayerId(), PbProtocol.XxxRequest, payloadMap)` 发送正式请求 $\to$ 断言 `InProcessAcceptanceKit.assertProtocolSuccess(res)`（内含 `errorCode == 0` 与 `trace.errorEvents` 为空校验）、资源扣除与奖励发放流水净额匹配（`InProcessAcceptanceKit.assertResourceDelta(res, configId, expectedSignedDelta)` 或 `assertAnyRewardGranted(res)`）、模块内存状态变更正确（`InProcessAcceptanceKit.inspectModuleField(player, moduleName, dotPath)`）。
    - **资源/条件不足拦截（Negative Guard）**：在清零货币或未达标状态下发包 $\to$ 调用 `InProcessAcceptanceKit.assertErrorCode(res, ErrorMsgEnum.xxx.getId())` 断言返回预期非零错误码（如 `resource_not_enough` 或 `condition_check_error`）且状态未被脏改。
    - **限购/冷却/上限拦截（Limit Guard）**：连续购买或操作直至达到配表上限（如 `ShopItemQuota`），再发第 $N+1$ 次请求 $\to$ 断言返回上限错误码（如 `shop_item_buy_count_max` / `times_limit`）。
-   - **跨周期重置自愈（Cross-Day / Reset）**：在达到每日上限后，触发跨天刷新（如 `player.getShopModule().onDayReset()` 或 `PlayerHelper.refreshDay`）$\to$ 验证计数归零并可再次成功执行。
+   - **跨周期重置自愈（Cross-Day / Reset）**：在达到每日上限后，触发跨天刷新（如 `player.fireAndHandleEvent(EventTypeEnum.NewDay)` 或 `PlayerHelper.refreshDay(player)`）$\to$ 验证计数归零并可再次成功执行。
    - **幂等与防重入（Idempotency）**：对一次性购买/领取协议（如月卡、章节礼包、基金通行证购买、已领奖励）重复发送相同请求 $\to$ 断言第二次请求被 `repeat_request` / `month_card_repeated` / `shop_gift_repeated` 拦截。
 2. **真实集群与跨服 RPC 铁律（禁止本地内存绕过）**：
    - **严禁在 `GameServer` 验收套件中直接调用 `CrossServer` 专属本地内存单例**（如严禁调用 `GuildService.getInstance()` 或 `GuildManager.getInstance().getGuild(...)`）！在真实多进程集群（`GameServer` 与 `CrossServer` 为独立 JVM 进程）中，跨服实体（如 `Guild`）仅驻留在 `CrossServer` 的 JVM 内存中，`GameServer` 本地的 `GuildManager` 为空。
-   - 所有跨服状态准备、查询与业务动作，**必须 100% 通过正式协议（`InProcessAcceptanceKit.invokeProto`）或真实 Vert.x 远程 RPC 代理（`ServerHelper.getGuildProxy(...)` / `ServerHelper.getCrossServerInterface()`）执行**，确保在正式集群环境下走真实的 EventBus 跨进程序列化与远程调用。
+   - 所有跨服状态准备、查询与业务动作，**必须 100% 通过正式协议（`InProcessAcceptanceKit.invokeProto`）或真实 Vert.x 远程 RPC 代理（`ServerHelper.getGuildProxy(...)` / `ServerHelper.getCrossActivityProxy(...)` / `ServerHelper.getAllServerInterface(ServerType.Cross, ...)`）执行**，确保在正式集群环境下走真实的 EventBus 跨进程序列化与远程调用。
    - 若跨服验收需要特定的测试前置状态辅助（如重置跨服公会的砍价目标），应在对应的跨服 RPC 接口（如 `GuildServiceInterface`）上定义正式的远程方法并通过 `ServerHelper.getGuildProxy(guildId)` 调用，严禁在 `GameServer` 本地强取跨服实体。
 3. **禁止项**：
    - 在验证“余额不足/条件不满足/达到上限”的反例契约用例中，**严禁调用破障器自动补钱或开启条件豁免**！
@@ -102,11 +102,10 @@ description: 模块级双轨自动化验收与多态配表矩阵扫描测试专�
      - 调用 `ConditionSatisfier.satisfyConditions(player, config.UnlockCondition, config.BuyCondition)`（支持传入 `int[]...` 或 `int...` 条件 ID，内部自动拉满等级/VIP/关卡、开启条件豁免并在遇到公会条件时自动设置虚拟 `guildId`）；
      - 若业务依赖真实跨服实体（如公会捐献/祈福/砍价/职位变更要求 `CrossServer` 上真实存在沙盒公会且玩家在公会成员列表中），在 `arrangeAndPreCheck` 中通过 `ServerHelper.getGuildProxy(...)` 或正式创建公会协议确保跨服沙盒实体已就绪；
      - 若业务要求目标条目先存在于玩家模块容器中（如商店购买要求 `ShopModule` 持有该 `ShopItem`，道具使用/分解要求背包持有该 `Item`），显式注入目标实例并清零已购买/已使用计数；
-     - 调用 `CostProvisioner` 静态方法自动补齐本行配置所需的普通资源或 **`Asset.Vouchers`（代金券，ID=`100023`）**：
+     - 调用 `CostProvisioner` 静态方法自动补齐本行配置所需的普通资源或 **`Asset.Vouchers`（代金券，ID=`100008`）**：
        - 商店购买参数（`[costType, itemId, count]`）：`CostProvisioner.provisionShopPayment(player, config.PurchaseParameter, 1)`；
-       - 二维资源数组（`int[][]`）：`CostProvisioner.provisionArrayCost(player, config.Cost, 1)`；
-       - 一维资源数组（`[id, count]`）：`CostProvisioner.provisionFlatCost(player, config.Cost, 1)`；
-       - 宝箱抽卡防免费券污染：`CostProvisioner.clearCompetingFreeTicketIfNecessary(player, shopBoxConfig, costType)`；
+       - 二维资源数组（`int[][]`）：`CostProvisioner.provisionCostMatrix(player, config.Cost, 1)`；
+       - 一维扁平资源数组（`int[]`，`{id, count, ...}`）：`CostProvisioner.provisionCostArray(player, config.Cost, 1)`；
      - **前置自检**：校验所需前置道具/状态已在沙盒玩家身上就绪；若未就绪则抛出 `new AcceptanceFixtureException("...", false)`（引擎自动归因为 `FIXTURE_DEFECT` 或 `PROVISION_FAILED`，连续 3 次触发熔断，绝不混淆为业务 Bug）。
    - **回调 2 `sutAct`（阶段 3 正式协议发包，`Supplier<Map<String, Object>>`）**：
      - 调用并返回 `InProcessAcceptanceKit.invokeProto(player.getPlayerId(), PbProtocol.XxxRequest, payloadMap)`，走真实 `Dispatcher` + `Handler`（以及真实 `ActorMailbox` 虚拟线程与跨服 RPC）执行，全程捕获 Response、Push、Trace `resourceEvents`/`errorEvents` 与模块 `Diff`。
@@ -165,7 +164,6 @@ import cn.game.games.net.game.gm.acceptance.*;
 import cn.game.games.net.game.helper.PlayerHelper;
 import cn.game.games.net.game.module.item.ItemHandler;
 import cn.game.protocol.generated.config.ItemConfig;
-import cn.game.protocol.generated.enume.ItemUse;
 import cn.game.protocol.generated.manager.ItemManager;
 import cn.game.protocol.manual.ErrorMsgEnum;
 import cn.game.protocol.manual.OpType;

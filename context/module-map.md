@@ -8,7 +8,7 @@
 
 ## 1. GameServer 玩家业务模块（`game/src/main/java/cn/game/games/net/game/module/`）
 
-默认情况下，`BasePlayerModule` 子类状态随 `PlayerData.modules` JSON 定时全量保存；**仅当模块重写 `alwaysStoreDataInStandaloneTable()` 返回 `true` 时**，核心列表才走独立表 `DbEntity` 显式读写（全服当前仅 4 个模块覆盖为 `true`：`battle`、`friend`、`invite`、`mail`）。
+默认情况下，`BasePlayerModule` 子类状态随 `PlayerData.modules` JSON 定时全量保存；`BasePlayerModule#alwaysStoreDataInStandaloneTable()` 默认实现为 `this.defaultDbMapperClass != null && this.defaultDbMapperClass.length > 0`，因此**凡重写 `defaultDbMapperClass()` 返回非空 Mapper 或显式覆写 `alwaysStoreDataInStandaloneTable()` 返回 `true` 的模块**，运行时均走独立表加载/持久化契约。当前工作树中共有 **5 个**独立表/混合模块：`battle`、`friend`、`invite`、`mail`（显式覆写两者）与 **`guild`**（覆写 `defaultDbMapperClass()` 返回 `GuildJoinMapper.class`，个人属性走聚合 JSON + `transient guildJoin` 走独立表）。
 
 | 子包 | 游戏领域 / 职责 | 核心 Module / Service | 核心 Handler | 存储形态与特殊依赖 |
 |---|---|---|---|---|
@@ -19,13 +19,13 @@
 | `battle` | 主线/西游/合成/爬塔/灵山/失落真经/梦魇/大王来巡山等战斗与关卡 | `BattleModule` | `BattleHandler`、`HCBattleHandler`、`XiYouBattleHandler`、`IBattleHandler` | **独立表**（`alwaysStoreDataInStandaloneTable()=true`） |
 | `chat` | 聊天频道与发言 | `ChatModule` | `ChatHandler` | 聚合快照 |
 | `currency` | 数值资源（货币/经验/体力）与体力恢复 | `CurrencyModule`、`MoneyRecoverModule` | — | 聚合快照；对应 `Asset` 枚举与 `GoodsType=1` |
-| `develop` | **养成大类总包**（属性汇总、防线皮肤、装备/合并装备、宝石、英雄/合成英雄/皮肤、仙友、时装、宠物、神通、龙/剑等） | `AttrModule`、`DevelopModule`、`HeroModule`、`HCHeroModule`、`HeroSkinModule`、`EquipModule`、`MergeEquipModule`、`GemModule`、`PetModule`、`FairyFriendModule`、`SecretscriptModule`、`DefenceSkinModule`、`FashionModule`、`HCCommonModule`、`DragonModule`、`DragonSkillModule`、`SwordModule` | `DevelopHandler`、`HeroHandler`、`HCHeroHandler`、`EquipHandler`、`MergeEquipHandler`、`GemHandler`、`PetHandler`、`FairyFriendHandler`、`SecretscriptHandler`、`HCCommonHandler`、`DragonHandler` | 聚合快照；实体类多继承 `GoodsModule`（注意 `Equip`/`Dragon`/`Sword` 部分为历史/未启用状态，改前先核对 `isComplete()` 与 `GoodsTypeEnum`） |
+| `develop` | **养成大类总包**（属性汇总、防线皮肤、装备/合并装备、宝石、英雄/合成英雄/皮肤、仙友、时装、宠物、神通、龙/剑等） | `AttrModule`、`DevelopModule`、`HeroModule`、`HCHeroModule`、`HeroSkinModule`、`EquipModule`、`MergeEquipModule`、`GemModule`、`PetModule`、`FairyFriendModule`、`SecretscriptModule`、`DefenceSkinModule`、`FashionModule`、`HCCommonModule`、`DragonModule`、`DragonSkillModule`、`SwordModule` | `DevelopHandler`、`HeroHandler`、`HCHeroHandler`、`EquipHandler`、`MergeEquipHandler`、`GemHandler`、`PetHandler`、`FairyFriendHandler`、`SecretscriptHandler`、`HCCommonHandler`、`DragonHandler` | 聚合快照；实体类多继承 `GoodsModule`（注意 `Equipment(7)`/`Dragon(11)`/`DragonSkill(12)`/`Sword(36)` 在 `GoodsTypeEnum.java` 注释中标明暂未启用；各模块本身均继承 `BasePlayerModule#isComplete()` 默认 `true`，改前须结合枚举与实际调用点核对） |
 | `draw` | 抽卡 / 英雄招募（含请神） | `DrawModule` | `DrawHandler` | 聚合快照；依赖 `Rnd` 可控随机 |
 | `friend` | 好友列表、申请、黑名单、送礼 | `FriendModule` | `FriendHandler` | **独立表**（`alwaysStoreDataInStandaloneTable()=true`） |
 | `func` | 功能开启（`InitialUI`）与开关判断 | `FuncModule` | — | 聚合快照；`GameBaseHandler#getInitialUI()` 自动校验 |
 | `ginseng` | 人参果树养成与专属商店 | `GinsengTreeModule` | `GinsengTreeHandler` | 聚合快照 |
 | `guarantee` | 抽卡/玩法保底计数 | `GuaranteeModule` | — | 聚合快照 |
-| `guild` | 玩家侧公会（仙会）代理与个人数据 | `GuildModule` | `GuildHandler` | 聚合快照（个人侧）；公会主体在 **`CrossServer`**，须经 `ServerHelper.getGuildProxy(guildId)` 调用 |
+| `guild` | 玩家侧公会（仙会）代理与个人数据 | `GuildModule` | `GuildHandler` | **混合模式（独立表 + 聚合快照）**：覆写 `defaultDbMapperClass()` 返回 `GuildJoinMapper.class`（运行时 `alwaysStoreDataInStandaloneTable()=true`，`transient guildJoin` 走独立表加载），个人申请/退会等基础字段走聚合 JSON；公会主体在 **`CrossServer`**，须经 `ServerHelper.getGuildProxy(guildId)` 调用 |
 | `invite` | 好友邀请码与邀请奖励 | `InviteModule` | `InviteHandler` | **独立表**（`alwaysStoreDataInStandaloneTable()=true`） |
 | `item` | 堆叠/非堆叠/唯一/限时道具基类与背包 | `ItemModule`、`ExpireItemModule`、`AbstractItem*Module` | `ItemHandler` | 聚合快照；对应 `GoodsType=2` |
 | `mail` | 玩家邮件、公告邮件、全服邮件拉取、筛选分页 | `MailModule` | `MailHandler` | **独立表**（`alwaysStoreDataInStandaloneTable()=true`，`Mail` 实体 + `MailMapper`，字段标 `@JsonIgnore`） |

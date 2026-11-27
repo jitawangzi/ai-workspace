@@ -73,6 +73,7 @@
    }
    ```
 3. **Module 声明独立表加载与排除 JSON 序列化**：
+   - `BasePlayerModule#alwaysStoreDataInStandaloneTable()` 默认实现为 `this.defaultDbMapperClass != null && this.defaultDbMapperClass.length > 0`。因此只需重写 `defaultDbMapperClass()` 返回非空数组，运行时 `alwaysStoreDataInStandaloneTable()` 即自动为 `true`（如混合模块 `GuildModule` 返回 `GuildJoinMapper.class` 并以 `transient` 排除 `guildJoin` 字段序列化，其余个人字段仍走聚合 JSON）；亦可像 `MailModule` 一样显式覆写两者增强可读性。
    ```java
    public class SampleStandaloneModule extends BasePlayerModule {
 
@@ -80,13 +81,13 @@
        @JsonIgnore
        private Map<Long, SampleRecord> records = new ConcurrentHashMap<>();
 
-       /** 声明走独立表持久化契约。 */
+       /** 可选显式覆写；默认基类在 defaultDbMapperClass() 非空时已返回 true。 */
        @Override
        public boolean alwaysStoreDataInStandaloneTable() {
            return true;
        }
 
-       /** 声明登录/加载时要查询的 Mapper 列表（默认调用 selectByPlayerId）。 */
+       /** 声明登录/加载时要查询的 Mapper 列表（默认调用 selectByPlayerId；按主键查可同步覆写 defaultSelectMethodName()）。 */
        @Override
        public Class<?>[] defaultDbMapperClass() {
            return new Class<?>[] { SampleRecordMapper.class };
@@ -177,13 +178,14 @@
 
 ---
 
-## 5. GM Web 控制台与 `gm-console/panels/` 热重载面板指南
+## 5. GM Web 控制台与 `gm-console/panels/` 业务功能测试页指南
 
-1. **启动与访问**：
-   - 非生产模式（`-Dserver.run.mode=test` / `dev`）启动 `GameServer` 时，[GmWebConsoleServer](../../game/src/main/java/cn/game/games/net/game/gm/web/GmWebConsoleServer.java) 自动挂载。
-   - 默认地址：**`http://127.0.0.1:18080/gm-console`**（配置键 `gm.http.enabled` / `gm.http.port` / `gm.http.host` / `gm.http.requireAuth` / `gm.http.opsToken` 及对应 `GM_HTTP_*` 环境变量，端口 `17011` 保留给 `/runtime-identity`，禁止冲突）。
-   - 生产模式默认关闭且强制 Fail-Closed；仅在显式配置开启与 Token 鉴权后才暴露 `OPS_SAFE` / `OPS_REPAIR` 能力。
-2. **编写热重载自定义面板**：
-   - 存放目录：`server/gm-console/panels/*.html`（参考样例 [quick-test-panel.html](../../gm-console/panels/quick-test-panel.html)）。
-   - [GmConsolePanelLoader](../../game/src/main/java/cn/game/games/net/game/gm/web/GmConsolePanelLoader.java) 动态读取该目录，修改 HTML 后刷新网页即可生效，无需重启 `GameServer`。
-   - 面板内直接调用控制台注入的 `window.GmConsole.executeAction("<gmActionId>", { ...params })` 执行已注册的 `@GmAction` 指令（返回统一 JSON 结果），严禁在面板中绕过鉴权直接拼装未授权后台接口。
+1. **双视角定位与访问**：
+   - 非生产模式（`-Dserver.run.mode=test` / `dev`）启动 `GameServer` 时，[GmWebConsoleServer](../../game/src/main/java/cn/game/games/net/game/gm/web/GmWebConsoleServer.java) 自动挂载，默认地址 **`http://127.0.0.1:18080/gm-console`**（配置键 `gm.http.*` / `GM_HTTP_*`，端口 `17011` 保留给 `/runtime-identity`，生产默认关闭且强制 Fail-Closed）。
+   - **「🧪 业务测试台 (QA/复现)」**（`#/panels`、`#/panel/<file>`）：以**玩法/子系统**为粒度（1 玩法 = 1 热重载 HTML，解耦 `.proto` 合并模块），面向 QA 功能测试与开发复现 Bug 共用；底部内置可折叠「开发者诊断抽屉」自动留存底层协议 Request/Response/Push/Trace/Diff 与 cURL。
+   - **「⚡ 快捷 GM 抽屉」与「常用快捷 GM 工具箱」**：导航条右侧随时呼出跨页面快捷 GM 抽屉（支持 `item.set` 精确设资源、`player.setLevel`/`player.setVip` 设等级或差 1 经验即升级、`player.openAllFunc`、`player.super`、`battle.zxgk` 跳关与冷重载）；宽屏工具箱 [common_toolbox.html](../../gm-console/panels/common_toolbox.html) 另支持中文搜 `Item` 配表、多副本跳关、任务/英雄/邮件快捷操作与模块勾选重置。
+   - **「功能协议工作台 (开发)」**（`#/home`、`#/module/<id>`）：纯面向开发的 `.proto` 协议调试器与模块双轨验收入口，侧边栏反向关联展示该模块下的业务测试页。
+2. **编写 / AI 生成热重载业务测试页**：
+   - **生成 Skill 真源**：按需调用 [feature-test-panel-generator/SKILL.md](../skills/feature-test-panel-generator/SKILL.md)，参考首个标杆页 [shop.html](../../gm-console/panels/shop.html)（以及最小示例 [quick-test-panel.html](../../gm-console/panels/quick-test-panel.html)）。
+   - **存放与元数据**：放在 `server/gm-console/panels/<panel-id>.html`（文件名匹配 `^[a-zA-Z0-9_-]+\.html$`），顶部声明 `<!-- @gm-panel { "id", "title", "category", "audience", "modules", "tags", "summary" } -->`。其中 `modules` 支持多对多关联（如多个活动页均可声明 `["activity", "0x11"]`）。
+   - **热重载与 SDK v2**：[GmConsolePanelLoader](../../game/src/main/java/cn/game/games/net/game/gm/web/GmConsolePanelLoader.java) 按请求实时读盘解析元数据，修改 `gm-console/panels/*.html` 后免重启热生效（内置 `index.html` 与 `workbench.js` 仍需重启 `GameServer`）。面板内统一使用 `window.GmConsole` SDK v2（`invokeProto`、`executeAction`、`inspectPlayer`、`resetModules`、`addResource`、`saveSnapshot`/`restoreSnapshot`、`queryConfigList`、`offsetTime`/`newDay`、`onPlayerChange`）并全量使用宿主主题 CSS 变量以兼容三套主题。

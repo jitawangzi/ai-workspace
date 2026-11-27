@@ -71,8 +71,8 @@ public enum QuestTypeEnum {
 
 ### 3.1 基础类型
 *   **数值型**：`byte`, `short`, `int`, `long`, `float`, `double`
-*   **字符/布尔**：`String`, `boolean`
-*   **时间日期**：`Date`, `LocalDateTime`, `CronExpression` (Cron表达式)
+*   **字符/布尔**：`String`, `boolean`（单元格须写 `0` 或 `1`，禁止文本 `false`）
+*   **时间日期**：`Date`（格式 `yyyy-MM-dd HH:mm:ss`）、`CronExpression`（Cron 表达式）。*注：`LocalDateTime` 当前存在生成器分支缺口，不作为受支持的标准表类型（见 [doc/02_开发流程与研发规范手册.md](../../doc/02_开发流程与研发规范手册.md) 第 3.10 节）。*
 *   **枚举**：自定义的 Enum 类型
 
 ### 3.2 集合类型

@@ -55,7 +55,17 @@ $targetModuleId = Resolve-ModuleIdInt $ModuleId
 $baseUri = $GmConsoleUri.AbsoluteUri.TrimEnd('/')
 $suitesEndpoint = "$baseUri/gm-console/api/workbench/acceptance/suites"
 $runEndpoint = "$baseUri/gm-console/api/workbench/acceptance/run"
-$effectiveToken = if (-not [string]::IsNullOrWhiteSpace($GmToken)) { $GmToken.Trim() } elseif ($env:GM_OPS_TOKEN) { $env:GM_OPS_TOKEN.Trim() } else { '' }
+$effectiveToken = if (-not [string]::IsNullOrWhiteSpace($GmToken)) {
+    $GmToken.Trim()
+} elseif (-not [string]::IsNullOrWhiteSpace($env:GM_OPS_TOKEN)) {
+    $env:GM_OPS_TOKEN.Trim()
+} elseif (-not [string]::IsNullOrWhiteSpace($env:GM_HTTP_OPS_TOKEN)) {
+    $env:GM_HTTP_OPS_TOKEN.Trim()
+} elseif (-not [string]::IsNullOrWhiteSpace($env:GM_HTTP_TOKEN)) {
+    $env:GM_HTTP_TOKEN.Trim()
+} else {
+    ''
+}
 $requestHeaders = @{}
 if ($effectiveToken) {
     $requestHeaders['X-GM-Token'] = $effectiveToken

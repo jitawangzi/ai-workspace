@@ -152,6 +152,20 @@ if ($Mode -eq 'Syntax') {
     $contextText = (Get-ChildItem -LiteralPath (Join-Path $aiRoot 'context') -Recurse -File -Filter '*.md' | ForEach-Object { [IO.File]::ReadAllText($_.FullName) }) -join "`n"
     Assert-Contract ($contextText -notmatch 'com\.joyfort|AirParam|ServerEntrance|updateAirData|AbsSinglePlayerModelMongoDao|AirExcelConfig|air_test_protocol\.jsp') 'Reference-project APIs leaked into active context'
     Assert-Contract ($contextText -notmatch 'D:\\work-all\\work_2025|\]\(human-sop\.md\)|\]\(protocol\.md\)') 'Obsolete paths survived migration'
+    $allGuardDocs = @(
+        Get-Item -LiteralPath (Join-Path $hostRoot 'README.md')
+        Get-ChildItem -LiteralPath (Join-Path $hostRoot 'doc') -File -Filter '*.md'
+        Get-ChildItem -LiteralPath (Join-Path $aiRoot 'context') -Recurse -File -Filter '*.md'
+        Get-ChildItem -LiteralPath (Join-Path $aiRoot 'skills') -Recurse -File -Filter '*.md'
+        foreach ($projSkills in @('.agents/skills', '.claude/skills')) {
+            $projDir = Join-Path $hostRoot $projSkills
+            if (Test-Path -LiteralPath $projDir -PathType Container) {
+                Get-ChildItem -LiteralPath $projDir -Recurse -File -Filter '*.md'
+            }
+        }
+    )
+    $allGuardText = ($allGuardDocs | ForEach-Object { [IO.File]::ReadAllText($_.FullName) }) -join "`n"
+    Assert-Contract ($allGuardText -notmatch '990_000_000L|\b100023\b|\bprovisionArrayCost\b|\bprovisionFlatCost\b|\bclearCompetingFreeTicketIfNecessary\b|enume\.ItemUse|\bonDayReset\(|\bgetCrossServerInterface\(') 'Confirmed stale constants or non-existent APIs regressed into docs/skills'
     $profiles = Get-Content -LiteralPath (Join-Path $aiRoot 'context/verification-commands.json') -Raw | ConvertFrom-Json
     Assert-Contract (($profiles.commands.compile.arguments -join ' ') -match 'mvn.*compile') 'Java compile profile must invoke Maven'
     Assert-Contract (($profiles.commands.'java-unit-smoke'.arguments -join ' ') -match 'run-java-tests.ps1.*core.*TagManagerTest') 'Java smoke profile must execute actual selected JUnit tests'

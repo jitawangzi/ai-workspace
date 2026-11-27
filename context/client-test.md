@@ -316,7 +316,7 @@ sendAndWait(newDayReq);
 |---|---|
 | `ModuleAcceptanceSuite` | 模块双轨验收套件接口；通过 `getRequiredServerTypes()` 声明模块依赖的真实服务器拓扑（如本服模块 `List.of(ServerType.Game)`、跨服公会模块 `List.of(ServerType.Game, ServerType.Cross)`） |
 | `ModuleAcceptanceEngine` | 套件注册中心与双轨调度器；提供 `inspectClusterTopology` 校验 `ActiveServerListManager` 在线节点，支持 `requireLiveCluster=true` 强制真实集群验收；生产模式（`PRODUCTION`）下在引擎入口与 HTTP 路由层执行双重硬阻断 |
-| `SandboxExecutionGuard` | 维护专用沙盒玩家 ID 段（`990_000_000L + moduleId`）、真实集群跨服路由注册（在 Redis 注册沙盒玩家 `IdCache` 所在 `GameServer` 路由与 `SimplePlayer` 快照，支持 `GameServer <-> CrossServer` 双向 RPC）、跨服沙盒实体 `DAO` 写库精准静默（识别沙盒 `PlayerData`/`GuildJoin`/`GuildData`）、`PushService` 与 `RankService` 静默，以及 `PlayerSaveCoordinator` 沙盒虚拟存盘确认 |
+| `SandboxExecutionGuard` | 维护专用沙盒玩家 ID 段（`PlayerSaveCoordinator.SANDBOX_PLAYER_ID_MIN = 900_000_000_000L`，默认分配 `900_000_000_000L + Math.max(1L, (long) moduleId)`）、真实集群跨服路由注册（在 Redis 注册沙盒玩家 `IdCache` 所在 `GameServer` 路由与 `SimplePlayer` 快照，支持 `GameServer <-> CrossServer` 双向 RPC）、跨服沙盒实体 `DAO` 写库精准静默（识别沙盒 `PlayerData`/`GuildJoin`/`GuildData`）、`PushService` 与 `RankService` 静默，以及 `PlayerSaveCoordinator` 沙盒虚拟存盘确认 |
 | `AcceptanceContext` | 驱动 `executeContractCase` 与三段式回调 `executeMatrixRow`，执行四态故障归因（`PASSED` / `PROVISION_FAILED` / `FIXTURE_DEFECT` / `SUT_FAILURE` / `ASSERTION_FAILED`）、连续 3 次夹具失败熔断、多态分支 `UNCOVERED_BRANCH` 告警与集群节点缺失 `CLUSTER_TOPOLOGY_MISSING` 告警 |
 | `InProcessAcceptanceKit` | 进程内静态工具包：`ensureHandlerRegistered`、`invokeProto`（在真实 `GameServer` 中自动将沙盒静默上下文传播至玩家 `ActorMailbox` 虚拟线程）、`gm`、`inspectModuleField`、`assertProtocolSuccess`、`assertErrorCode`、`assertResourceDelta` |
 | `SandboxResetter` | 调用 `resetModules(player, "item", "shop", "currency", ...)` 原地毫秒级重置模块状态、清理虚拟公会上下文并复位可控随机源 |
