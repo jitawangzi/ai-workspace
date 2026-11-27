@@ -114,10 +114,15 @@ description: 面向 QA 测试人员与开发复现 Bug 共用的“业务功能�
 | `setPlayerLevel(lv, {nearLevelUp, exp})` / `setVipLevel(vip, {nearLevelUp, exp})` | 设置玩家等级 / VIP 等级，支持 `nearLevelUp: true` 将当前经验设为最大经验 - 1（差 1 点即升级） | `await GmConsole.setPlayerLevel(20, { nearLevelUp: true })` |
 | `openAllFunc()` / `setMainStage(idOrIndex)` | 一键解锁全部 `InitialUI` 功能 / 设置主线通关进度（`battle.zxgk`） | `await GmConsole.openAllFunc()` / `await GmConsole.setMainStage(15)` |
 | `saveSnapshot(name)` / `restoreSnapshot(name)` / `flushAndColdReload()` | 保存 / 回滚玩家内存快照 / 强制落盘冷重载 | `await GmConsole.saveSnapshot('before_bug')` |
+| `diffSnapshots(base, target, modules)` | 对比两个内存快照（或 `target='__CURRENT__'` 对比当前实时状态）字段差异 | `await GmConsole.diffSnapshots('before_bug', '__CURRENT__', 'ShopModule')` |
+| `invokeProtoConcurrent(msgIdOrName, payload, opts)` | 以 `VirtualThread` 并发连发同一协议，返回逐次结果、错误码分布与总状态净 Diff（测幂等/防刷） | `await GmConsole.invokeProtoConcurrent('ShopItemBuyRequest_15000003', {...}, { concurrency: 5 })` |
+| `exportScenario(name)` / `runScenario(scenario, opts)` | 将诊断抽屉中录制的操作序列导出为可复现场景 JSON 或顺序回放执行 | `const sc = GmConsole.exportScenario('bug_repro'); await GmConsole.runScenario(sc);` |
 | `toggleQuickGmDrawer(true)` | 呼出控制台右侧全局「⚡ 快捷 GM 抽屉」（各玩法页无需重复堆叠通用调等级/跳关/超级号控件） | `GmConsole.toggleQuickGmDrawer(true)` |
 | `queryConfigList(table, {filter, page, pageSize})` | 分页/条件查询静态配置表 | `await GmConsole.queryConfigList('ShopItem', { pageSize: 200 })` |
 | `queryConfigGet(table, {id, key})` | 按 ID 或键查询单条配置（`GlobalConst` 用 `key`） | `await GmConsole.queryConfigGet('Shop', { id: 1 })` |
 | `getGoodsCatalog(typeId, keyword)` | 查询全物品大类（`typeId=0`）或指定大类下全部配表条目（`typeId=1/2/3/7/15/...`，含 `canSet`/`canDel` 能力标识），用于 2 级联动选品 | `await GmConsole.getGoodsCatalog(2, '碎片')` |
+| `getOpsHealth()` / `getAuditLogs(query)` / `validateConfigs()` / `reloadConfig(table)` | 运行态健康指标、操作审计检索、配表外键引用巡检与配表热更新 | `await GmConsole.validateConfigs()` |
+| `searchPlayers(kw)` / `getPlayerDetail(pid)` / `sendOpsMail(pid, mail)` | 检索在线/离线玩家、内存与 DB 一致性核对及安全补发邮件 | `await GmConsole.getPlayerDetail(10001)` |
 | `offsetTime(expr, opts)` / `newDay()` | 推进全局虚拟时钟 / 触发当前玩家个人跨天 | `await GmConsole.offsetTime('+1d')` / `await GmConsole.newDay()` |
 | `seedRng(seed)` / `resetRng()` | 固定 / 恢复服务端随机数种子（复现概率类 Bug） | `await GmConsole.seedRng(12345)` |
 | `openModuleWorkbench(moduleIdOrKey)` | 跳转至开发向协议工作台对应模块 | `GmConsole.openModuleWorkbench('0x15')` |
